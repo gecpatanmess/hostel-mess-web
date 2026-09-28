@@ -28909,8 +28909,8 @@ n=""+Date.now()+".jpg"
 l=$.vH().ay
 l===$&&A.a()
 s=7
-return A.p(l.kU("mess_images").Ga(n,a),$async$W5)
-case 7:l=l.kU("mess_images").a5B(n)
+return A.p(l.kU("images").Ga(n,a),$async$W5)
+case 7:l=l.kU("images").a5B(n)
 q=l
 s=1
 break
