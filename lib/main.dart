@@ -200,9 +200,9 @@ class ViewMenuTab extends StatelessWidget {
         String dateStr = "${days[now.weekday]}, ${now.day} ${months[now.month]} ${now.year}";
 
         // 3 Demo Photos for the cards
-        String bfDemoImg = "https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=500&q=80"; // Breakfast
-        String luDemoImg = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80"; // Lunch bowl
-        String dnDemoImg = "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&q=80"; // Dinner spread
+         // Breakfast
+         // Lunch bowl
+         // Dinner spread
 
         // Original Main Menu Viewer (Hidden by default)
         Widget mediaViewer;
@@ -267,7 +267,7 @@ class ViewMenuTab extends StatelessWidget {
                 title: "BREAKFAST",
                 items: bf,
                 color: const Color(0xFFFF6B35),
-                imageWidget: Image.network(bfDemoImg, fit: BoxFit.cover),
+                
                 imageOnRight: true,
               ),
               const SizedBox(height: 16),
@@ -278,7 +278,7 @@ class ViewMenuTab extends StatelessWidget {
                 title: "LUNCH",
                 items: lu,
                 color: const Color(0xFF4CAF50),
-                imageWidget: Image.network(luDemoImg, fit: BoxFit.cover),
+                
                 imageOnRight: false,
               ),
               const SizedBox(height: 16),
@@ -289,7 +289,7 @@ class ViewMenuTab extends StatelessWidget {
                 title: "DINNER",
                 items: dn,
                 color: const Color(0xFF7B68EE),
-                imageWidget: Image.network(dnDemoImg, fit: BoxFit.cover),
+                
                 imageOnRight: true,
               ),
               const SizedBox(height: 24),
@@ -345,13 +345,19 @@ class ViewMenuTab extends StatelessWidget {
     bool imageOnRight = true,
   }) {
     Widget circleImage = Container(
-      width: 100, height: 100,
+      width: 90, height: 90,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: color, width: 3),
-        boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)],
+        border: Border.all(color: color.withOpacity(0.5), width: 2),
+        color: color.withOpacity(0.15),
       ),
-      child: ClipOval(child: imageWidget),
+      child: Center(
+        child: Icon(
+          title.toLowerCase().contains("breakfast") ? Icons.free_breakfast :
+          title.toLowerCase().contains("lunch") ? Icons.lunch_dining : Icons.dinner_dining,
+          color: color, size: 40,
+        ),
+      ),
     );
 
     // Parse items by comma
@@ -8417,7 +8423,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.35",
+              "Version 1.0.36",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
