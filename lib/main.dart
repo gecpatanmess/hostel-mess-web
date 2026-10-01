@@ -31,21 +31,30 @@ class ViewMenuTab extends StatelessWidget {
   const ViewMenuTab({super.key});
   @override
   Widget build(BuildContext context) {
-    if (globalMenuFile == null) {
+    if (globalMenuFile == null && globalMenuUploadBytes == null && globalMenuUrl == null) {
       return const Center(
-        child: Text(
-          "No menu uploaded yet.",
-          style: TextStyle(color: brandGray),
-        ),
+        child: Text("No menu uploaded yet.", style: TextStyle(color: brandGray)),
       );
     }
     if (globalMenuIsPdf) {
-      return SfPdfViewer.file(globalMenuFile!);
-    } else {
-      return InteractiveViewer(
-        child: Center(child: (globalMenuFile! == null || kIsWeb) ? const Icon(Icons.image, size: 50) : Image.file(globalMenuFile!)),
-      );
+      if (globalMenuUploadBytes != null) {
+        return SfPdfViewer.memory(globalMenuUploadBytes!);
+      } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
+        return SfPdfViewer.network(globalMenuUrl!);
+      } else if (globalMenuFile != null) {
+        return SfPdfViewer.file(globalMenuFile!);
+      }
     }
+    
+    // Image
+    if (globalMenuUploadBytes != null) {
+      return InteractiveViewer(child: Center(child: Image.memory(globalMenuUploadBytes!)));
+    } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
+      return InteractiveViewer(child: Center(child: Image.network(globalMenuUrl!)));
+    } else if (globalMenuFile != null && !kIsWeb) {
+      return InteractiveViewer(child: Center(child: Image.file(globalMenuFile!)));
+    }
+    return const Center(child: Icon(Icons.image, size: 50));
   }
 }
 
@@ -985,9 +994,10 @@ class SyncService {
 
     // Wait, we need real base64 for upload.
     for (var s in data['students']) {
-      if (s['photoBase64'].isNotEmpty && !kIsWeb) {
+      String photoB64 = s['photoBase64'] ?? s['photoUrl'] ?? '';
+      if (photoB64.isNotEmpty && !kIsWeb) {
         try {
-          File f = File(s['photoBase64']);
+          File f = File(photoB64);
           if(f.existsSync()) {
             s['photoBase64'] = base64Encode(await f.readAsBytes());
           } else {
