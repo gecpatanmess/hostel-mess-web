@@ -1,7 +1,7 @@
 ﻿import re
 import os
 
-with open('lib/main.dart.bak', 'r', encoding='utf-8') as f:
+with open('lib/main.dart', 'r', encoding='utf-8') as f:
     content = f.read()
 
 # 1. Add AboutDevelopersScreen at the bottom
