@@ -1953,7 +1953,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     // Email verification check
-    if (!_studentEmailVerified) {
+    if (!hasSavedStudent && !_studentEmailVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please verify your email first by clicking "Verify Email"'),
@@ -2122,7 +2122,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
     // Email verification check for admin
-    if (!_adminEmailVerified) {
+    if (!hasSavedAdmin && !_adminEmailVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text(
@@ -2552,6 +2552,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
             ),
+            ],
             const SizedBox(height: 20),
             _buildPasswordField(
               controller: _studentPinController,
@@ -2565,6 +2566,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ), // strictly limits to 8 characters
               ],
             ),
+              if (!hasSavedStudent) ...[
               const SizedBox(height: 20),
               _buildPasswordField(
                 controller: _studentRePinController,
@@ -2824,6 +2826,7 @@ class _LoginScreenState extends State<LoginScreen> {
               hintText: "Enter your name",
               icon: Icons.person_outline,
             ),
+            ],
             const SizedBox(height: 20),
             _buildPasswordField(
               controller: _adminPasswordController,
@@ -2833,6 +2836,7 @@ class _LoginScreenState extends State<LoginScreen> {
               isStudent: false,
             ),
             const SizedBox(height: 20),
+            if (!hasSavedAdmin) ...[
             // Email Verification Field for Admin
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -8130,7 +8134,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.31",
+              "Version 1.0.32",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
