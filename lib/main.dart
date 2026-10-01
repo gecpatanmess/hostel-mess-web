@@ -27,34 +27,102 @@ String formatDateTime(DateTime dt) {
   return "${pad(dt.day)}/${pad(dt.month)}/${dt.year} | ${pad(hour12)}:${pad(dt.minute)} $period";
 }
 
+
+String _getMonthName(int month) {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[month - 1];
+}
+
+String _getWeekdayName(int weekday) {
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  return days[weekday - 1];
+}
+
 class ViewMenuTab extends StatelessWidget {
   const ViewMenuTab({super.key});
   @override
   Widget build(BuildContext context) {
+
+    String todayStr = "--";
+    final defaultMenu = defaultWeeklyMenu[DateTime.now().weekday] ?? defaultWeeklyMenu[DateTime.monday]!;
+    
+    // We will build a text summary to show above the menu image
+    Widget menuTextSection = FutureBuilder<DataSnapshot>(
+      future: FirebaseDatabase.instance.ref('hostelData/daily_menus/').get(),
+      builder: (context, snapshot) {
+        String bf = defaultMenu['breakfast']!;
+        String lu = defaultMenu['lunch']!;
+        String dn = defaultMenu['dinner']!;
+        if (snapshot.hasData && snapshot.data!.value != null) {
+          final data = Map<String, dynamic>.from(snapshot.data!.value as Map);
+          bf = data['breakfast'] ?? bf;
+          lu = data['lunch'] ?? lu;
+          dn = data['dinner'] ?? dn;
+        }
+        
+        String formattedDate = " ,  - ";
+        
+        return Container(
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(formattedDate, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: brandOrange)),
+              const Divider(),
+              Text("?? Breakfast: ", style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
+              Text("?? Lunch: ", style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
+              Text("?? Dinner: ", style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
+            ],
+          ),
+        );
+      }
+    );
+
     if (globalMenuFile == null && globalMenuUploadBytes == null && globalMenuUrl == null) {
-      return const Center(
-        child: Text("No menu uploaded yet.", style: TextStyle(color: brandGray)),
+      return Column(
+        children: [
+          menuTextSection,
+          const Expanded(child: Center(child: Text("No menu image uploaded yet.", style: TextStyle(color: brandGray)))),
+        ],
       );
     }
+
+    Widget mediaViewer;
     if (globalMenuIsPdf) {
       if (globalMenuUploadBytes != null) {
-        return SfPdfViewer.memory(globalMenuUploadBytes!);
+        mediaViewer = SfPdfViewer.memory(globalMenuUploadBytes!);
       } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
-        return SfPdfViewer.network(globalMenuUrl!);
+        mediaViewer = SfPdfViewer.network(globalMenuUrl!);
       } else if (globalMenuFile != null) {
-        return SfPdfViewer.file(globalMenuFile!);
+        mediaViewer = SfPdfViewer.file(globalMenuFile!);
+      } else {
+        mediaViewer = const Center(child: Text("PDF Error"));
+      }
+    } else {
+      if (globalMenuUploadBytes != null) {
+        mediaViewer = InteractiveViewer(child: Center(child: Image.memory(globalMenuUploadBytes!)));
+      } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
+        mediaViewer = InteractiveViewer(child: Center(child: Image.network(globalMenuUrl!)));
+      } else if (globalMenuFile != null && !kIsWeb) {
+        mediaViewer = InteractiveViewer(child: Center(child: Image.file(globalMenuFile!)));
+      } else {
+        mediaViewer = const Center(child: Icon(Icons.image, size: 50));
       }
     }
     
-    // Image
-    if (globalMenuUploadBytes != null) {
-      return InteractiveViewer(child: Center(child: Image.memory(globalMenuUploadBytes!)));
-    } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
-      return InteractiveViewer(child: Center(child: Image.network(globalMenuUrl!)));
-    } else if (globalMenuFile != null && !kIsWeb) {
-      return InteractiveViewer(child: Center(child: Image.file(globalMenuFile!)));
-    }
-    return const Center(child: Icon(Icons.image, size: 50));
+    return Column(
+      children: [
+        menuTextSection,
+        Expanded(child: mediaViewer),
+      ],
+    );
   }
 }
 
@@ -1999,6 +2067,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_student_name', typedName);
+    await prefs.setString('last_student_room', selectedRoom!);
+    await prefs.setString('last_student_photo', studentPhotoUrl ?? '');
     await prefs.setString('userType', 'student');
     await prefs.setString('identifier', typedName);
     await prefs.setString('photoPath', studentPhotoUrl ?? '');
@@ -2066,6 +2137,9 @@ class _LoginScreenState extends State<LoginScreen> {
         if (admin.pin == hashPassword(pin) || admin.pin == pin) {
           // Success
           final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_admin_phone', admin.phone);
+          await prefs.setString('last_admin_name', _adminNameController.text);
+          await prefs.setString('last_admin_photo', adminPhotoUrl ?? '');
           await prefs.setString('userType', 'admin');
           await prefs.setString('identifier', admin.phone);
           await prefs.setString('photoPath', adminPhotoUrl ?? '');
@@ -8008,7 +8082,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.28",
+              "Version 1.0.29",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
