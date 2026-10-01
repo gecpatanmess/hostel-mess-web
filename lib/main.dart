@@ -1880,17 +1880,25 @@ class _LoginScreenState extends State<LoginScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: newPassCtrl, decoration: const InputDecoration(hintText: "Enter 8-digit new password")),
+              TextField(
+                controller: newPassCtrl,
+                inputFormatters: [LengthLimitingTextInputFormatter(8)],
+                decoration: const InputDecoration(hintText: "Enter 8-digit new password"),
+              ),
               const SizedBox(height: 10),
-              TextField(controller: rePassCtrl, decoration: const InputDecoration(hintText: "Re-enter password")),
+              TextField(
+                controller: rePassCtrl,
+                inputFormatters: [LengthLimitingTextInputFormatter(8)],
+                decoration: const InputDecoration(hintText: "Re-enter password"),
+              ),
             ],
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
             ElevatedButton(
               onPressed: () {
-                if (newPassCtrl.text.length < 8) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Password must be 8 characters")));
+                if (newPassCtrl.text.length != 8) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Password must be exactly 8 characters")));
                   return;
                 }
                 if (newPassCtrl.text != rePassCtrl.text) {
@@ -1984,7 +1992,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (existingStudent != null) {
       if (existingStudent.pin.isEmpty) {
-        if (typedPin.length < 8) {
+        if (typedPin.length != 8) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be 8 characters'), backgroundColor: Colors.redAccent));
           return;
         }
@@ -2060,7 +2068,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
-      if (typedPin.length < 8) {
+      if (typedPin.length != 8) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be 8 characters'), backgroundColor: Colors.redAccent));
         return;
       }
@@ -2655,13 +2663,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _clearSavedStudent,
-                    child: const Text("Not You?", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                  ),
-                ),
+
               ],
             const SizedBox(height: 36),
             SizedBox(
@@ -2917,13 +2919,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _clearSavedAdmin,
-                    child: const Text("Not You?", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                  ),
-                ),
+
               ],
             const SizedBox(height: 36),
             SizedBox(
@@ -8134,7 +8130,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.30",
+              "Version 1.0.31",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
