@@ -68,7 +68,7 @@ class ViewMenuTab extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
-            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,9 +76,9 @@ class ViewMenuTab extends StatelessWidget {
             children: [
               Text(formattedDate, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: brandOrange)),
               const Divider(),
-              Text("?? Breakfast: ", style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
-              Text("?? Lunch: ", style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
-              Text("?? Dinner: ", style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
+              Text("?? Breakfast: " + bf, style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
+              Text("?? Lunch: " + lu, style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
+              Text("?? Dinner: " + dn, style: const TextStyle(fontSize: 15, height: 1.5, color: brandDark)),
             ],
           ),
         );
@@ -1838,17 +1838,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleForgotPassword(bool isStudentReq) async {
     String? emailToSend;
+    String? targetIdentifier;
+    
     if (isStudentReq) {
-      if (savedStudentName == null) return;
-      var roomStudents = globalRegisteredStudents.where((s) => s.roomNo == savedStudentRoom).toList();
+      targetIdentifier = hasSavedStudent ? savedStudentName : selectedStudentName;
+      if (targetIdentifier == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select your name first.")));
+        return;
+      }
       try {
-        var existingStudent = roomStudents.firstWhere((s) => s.name.toLowerCase() == savedStudentName!.toLowerCase());
+        var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name == targetIdentifier);
         emailToSend = existingStudent.email;
       } catch (e) {}
     } else {
-      if (savedAdminPhone == null) return;
+      targetIdentifier = hasSavedAdmin ? savedAdminPhone : _adminMobileController.text.trim();
+      if (targetIdentifier == null || targetIdentifier.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter your mobile number first.")));
+        return;
+      }
       try {
-        var admin = globalAdmins.firstWhere((a) => a.phone == savedAdminPhone);
+        var admin = globalAdmins.firstWhere((a) => a.phone == targetIdentifier);
         emailToSend = admin.email;
       } catch(e) {}
     }
@@ -2467,7 +2476,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            _buildDropdownField(),
+            if (hasSavedStudent) ...[
+                Center(child: Text(savedStudentName ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
+                Center(child: Text("Room: ${savedStudentRoom ?? ''}", style: const TextStyle(fontSize: 14, color: brandGray))),
+              ],
+              if (!hasSavedStudent) ...[
+              _buildDropdownField(),
             const SizedBox(height: 20),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2632,7 +2646,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ],
-            ),
+            ),              ], // End of hasSavedStudent
+              if (hasSavedStudent) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => _handleForgotPassword(true),
+                    child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _clearSavedStudent,
+                    child: const Text("Not You?", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             const SizedBox(height: 36),
             SizedBox(
               width: double.infinity,
@@ -2772,6 +2802,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
             const SizedBox(height: 32),
+            if (hasSavedAdmin) ...[
+              Center(child: Text(savedAdminName ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
+              Center(child: Text("Phone: ${savedAdminPhone ?? ''}", style: const TextStyle(fontSize: 14, color: brandGray))),
+              const SizedBox(height: 20),
+            ],
+            if (!hasSavedAdmin) ...[
             _buildInputField(
               controller: _adminMobileController,
               label: "Mobile Number",
@@ -2872,7 +2908,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
               ],
-            ),
+            ),              ], // End of hasSavedAdmin
+              if (hasSavedAdmin) ...[
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => _handleForgotPassword(false),
+                    child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _clearSavedAdmin,
+                    child: const Text("Not You?", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             const SizedBox(height: 36),
             SizedBox(
               width: double.infinity,
@@ -6158,7 +6210,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   onPressed: () async {
-                    if (hashPassword(passCtrl.text) == "e04e0e7bcc1345003115e9e02cdd5b8e16b0db8c8d4a76e6ab48ee52cbda8954") {
+                    if (hashPassword(passCtrl.text) == "f0ff3b50086e347379ef2f8dbc1227a6949e6cd03123c03ef3f3f7adc8da96be") {
                       Navigator.pop(ctx);
                       await _performReset();
                     } else {
@@ -8082,7 +8134,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.29",
+              "Version 1.0.30",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
