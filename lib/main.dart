@@ -62,23 +62,33 @@ class ViewMenuTab extends StatelessWidget {
         final days = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         String dateStr = "${days[now.weekday]}, ${now.day} ${months[now.month]} ${now.year}";
 
-        // Menu image widget (the uploaded photo/pdf)
-        Widget? menuImageWidget;
-        if (globalMenuUploadBytes != null) {
-          menuImageWidget = ClipRRect(
-            borderRadius: BorderRadius.circular(80),
-            child: Image.memory(globalMenuUploadBytes!, width: 120, height: 120, fit: BoxFit.cover),
-          );
-        } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http') && !globalMenuIsPdf) {
-          menuImageWidget = ClipRRect(
-            borderRadius: BorderRadius.circular(80),
-            child: Image.network(globalMenuUrl!, width: 120, height: 120, fit: BoxFit.cover),
-          );
-        } else if (globalMenuFile != null && !kIsWeb && !globalMenuIsPdf) {
-          menuImageWidget = ClipRRect(
-            borderRadius: BorderRadius.circular(80),
-            child: Image.file(globalMenuFile!, width: 120, height: 120, fit: BoxFit.cover),
-          );
+        // 3 Demo Photos for the cards
+        String bfDemoImg = "https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=500&q=80"; // Breakfast
+        String luDemoImg = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&q=80"; // Lunch bowl
+        String dnDemoImg = "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=500&q=80"; // Dinner spread
+
+        // Original Main Menu Viewer (Hidden by default)
+        Widget mediaViewer;
+        if (globalMenuIsPdf) {
+          if (globalMenuUploadBytes != null) {
+            mediaViewer = SizedBox(height: 400, child: SfPdfViewer.memory(globalMenuUploadBytes!));
+          } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
+            mediaViewer = SizedBox(height: 400, child: SfPdfViewer.network(globalMenuUrl!));
+          } else if (globalMenuFile != null) {
+            mediaViewer = SizedBox(height: 400, child: SfPdfViewer.file(globalMenuFile!));
+          } else {
+            mediaViewer = const Padding(padding: EdgeInsets.all(20), child: Center(child: Text("No menu uploaded", style: TextStyle(color: Colors.white))));
+          }
+        } else {
+          if (globalMenuUploadBytes != null) {
+            mediaViewer = InteractiveViewer(child: Center(child: Image.memory(globalMenuUploadBytes!)));
+          } else if (globalMenuUrl != null && globalMenuUrl!.isNotEmpty && globalMenuUrl!.startsWith('http')) {
+            mediaViewer = InteractiveViewer(child: Center(child: Image.network(globalMenuUrl!)));
+          } else if (globalMenuFile != null && !kIsWeb) {
+            mediaViewer = InteractiveViewer(child: Center(child: Image.file(globalMenuFile!)));
+          } else {
+            mediaViewer = const Padding(padding: EdgeInsets.all(20), child: Center(child: Text("No menu uploaded", style: TextStyle(color: Colors.white))));
+          }
         }
 
         return Container(
@@ -120,8 +130,7 @@ class ViewMenuTab extends StatelessWidget {
                 title: "BREAKFAST",
                 items: bf,
                 color: const Color(0xFFFF6B35),
-                imageWidget: menuImageWidget,
-                showImage: true,
+                imageWidget: Image.network(bfDemoImg, fit: BoxFit.cover),
                 imageOnRight: true,
               ),
               const SizedBox(height: 16),
@@ -132,8 +141,7 @@ class ViewMenuTab extends StatelessWidget {
                 title: "LUNCH",
                 items: lu,
                 color: const Color(0xFF4CAF50),
-                imageWidget: menuImageWidget,
-                showImage: true,
+                imageWidget: Image.network(luDemoImg, fit: BoxFit.cover),
                 imageOnRight: false,
               ),
               const SizedBox(height: 16),
@@ -144,11 +152,46 @@ class ViewMenuTab extends StatelessWidget {
                 title: "DINNER",
                 items: dn,
                 color: const Color(0xFF7B68EE),
-                imageWidget: menuImageWidget,
-                showImage: true,
+                imageWidget: Image.network(dnDemoImg, fit: BoxFit.cover),
                 imageOnRight: true,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+              
+              // Hidden Uploaded Menu Section
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: ExpansionTile(
+                    title: const Text(
+                      "📄 View Original Menu",
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      "Click to view the menu uploaded by Admin",
+                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                    ),
+                    iconColor: Colors.white,
+                    collapsedIconColor: Colors.white.withOpacity(0.7),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        constraints: const BoxConstraints(maxHeight: 500),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.2),
+                          borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+                        ),
+                        child: mediaViewer,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
             ],
           ),
         );
@@ -162,28 +205,17 @@ class ViewMenuTab extends StatelessWidget {
     required String items,
     required Color color,
     Widget? imageWidget,
-    bool showImage = false,
     bool imageOnRight = true,
   }) {
-    Widget circleImage = imageWidget != null
-      ? Container(
-          width: 100, height: 100,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: color, width: 3),
-            boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)],
-          ),
-          child: ClipOval(child: imageWidget),
-        )
-      : Container(
-          width: 100, height: 100,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: color.withOpacity(0.5), width: 2),
-            color: color.withOpacity(0.15),
-          ),
-          child: Icon(Icons.restaurant, color: color, size: 40),
-        );
+    Widget circleImage = Container(
+      width: 100, height: 100,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 3),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)],
+      ),
+      child: ClipOval(child: imageWidget),
+    );
 
     // Parse items by comma
     List<String> itemList = items.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
@@ -240,7 +272,6 @@ class ViewMenuTab extends StatelessWidget {
     );
   }
 }
-
 class NoticeItem {
   final String id;
   final String title;
@@ -8249,7 +8280,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.32",
+              "Version 1.0.33",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
