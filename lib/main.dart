@@ -38,23 +38,160 @@ String _getWeekdayName(int weekday) {
   return days[weekday - 1];
 }
 
+
+class WeeklyMenuEditorWidget extends StatefulWidget {
+  const WeeklyMenuEditorWidget({super.key});
+  @override
+  _WeeklyMenuEditorWidgetState createState() => _WeeklyMenuEditorWidgetState();
+}
+
+class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
+  int _selectedDay = DateTime.now().weekday;
+  final _bfCtrl = TextEditingController();
+  final _luCtrl = TextEditingController();
+  final _dnCtrl = TextEditingController();
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDayMenu();
+  }
+
+  void _loadDayMenu() async {
+    setState(() => _isLoading = true);
+    
+    // Default fallback
+    final fallback = defaultWeeklyMenu[_selectedDay] ?? defaultWeeklyMenu[DateTime.monday]!;
+    String bf = fallback['breakfast']!;
+    String lu = fallback['lunch']!;
+    String dn = fallback['dinner']!;
+
+    try {
+      final snap = await FirebaseDatabase.instance.ref('hostelData/weekly_template/$_selectedDay').get();
+      if (snap.exists && snap.value != null) {
+        final data = Map<String, dynamic>.from(snap.value as Map);
+        bf = data['breakfast'] ?? bf;
+        lu = data['lunch'] ?? lu;
+        dn = data['dinner'] ?? dn;
+      }
+    } catch(e) {}
+
+    _bfCtrl.text = bf;
+    _luCtrl.text = lu;
+    _dnCtrl.text = dn;
+    
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _saveDayMenu() async {
+    setState(() => _isLoading = true);
+    try {
+      await FirebaseDatabase.instance.ref('hostelData/weekly_template/$_selectedDay').set({
+        'breakfast': _bfCtrl.text.trim(),
+        'lunch': _luCtrl.text.trim(),
+        'dinner': _dnCtrl.text.trim(),
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Menu for day $_selectedDay updated!"), backgroundColor: Colors.green));
+    } catch(e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error updating menu"), backgroundColor: Colors.red));
+    }
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: const Text("Edit Weekly Timetable", style: TextStyle(fontWeight: FontWeight.bold, color: brandDark)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<int>(
+              value: _selectedDay,
+              decoration: const InputDecoration(labelText: "Select Day", border: OutlineInputBorder()),
+              items: const [
+                DropdownMenuItem(value: 1, child: Text("Monday (સોમવાર)")),
+                DropdownMenuItem(value: 2, child: Text("Tuesday (મંગળવાર)")),
+                DropdownMenuItem(value: 3, child: Text("Wednesday (બુધવાર)")),
+                DropdownMenuItem(value: 4, child: Text("Thursday (ગુરુવાર)")),
+                DropdownMenuItem(value: 5, child: Text("Friday (શુક્રવાર)")),
+                DropdownMenuItem(value: 6, child: Text("Saturday (શનિવાર)")),
+                DropdownMenuItem(value: 7, child: Text("Sunday (રવિવાર)")),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() { _selectedDay = val; });
+                  _loadDayMenu();
+                }
+              },
+            ),
+            const SizedBox(height: 16),
+            if (_isLoading) const CircularProgressIndicator(),
+            if (!_isLoading) ...[
+              TextField(controller: _bfCtrl, decoration: const InputDecoration(labelText: "Breakfast", border: OutlineInputBorder()), maxLines: null),
+              const SizedBox(height: 12),
+              TextField(controller: _luCtrl, decoration: const InputDecoration(labelText: "Lunch", border: OutlineInputBorder()), maxLines: null),
+              const SizedBox(height: 12),
+              TextField(controller: _dnCtrl, decoration: const InputDecoration(labelText: "Dinner", border: OutlineInputBorder()), maxLines: null),
+            ]
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: brandOrange, foregroundColor: Colors.white),
+          onPressed: _isLoading ? null : _saveDayMenu,
+          child: const Text("Save for this Day"),
+        ),
+      ],
+    );
+  }
+}
+
 class ViewMenuTab extends StatelessWidget {
   const ViewMenuTab({super.key});
   @override
   Widget build(BuildContext context) {
     final defaultMenu = defaultWeeklyMenu[DateTime.now().weekday] ?? defaultWeeklyMenu[DateTime.monday]!;
 
-    return FutureBuilder<DataSnapshot>(
-      future: FirebaseDatabase.instance.ref('hostelData/daily_menus/').get(),
+    final now = DateTime.now();
+    final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final weekDay = now.weekday;
+
+    return FutureBuilder<List<DataSnapshot>>(
+      future: Future.wait([
+        FirebaseDatabase.instance.ref('hostelData/weekly_template/$weekDay').get(),
+        FirebaseDatabase.instance.ref('hostelData/daily_menus/$todayStr').get(),
+      ]),
       builder: (context, snapshot) {
         String bf = defaultMenu['breakfast']!;
         String lu = defaultMenu['lunch']!;
         String dn = defaultMenu['dinner']!;
-        if (snapshot.hasData && snapshot.data!.value != null) {
-          final data = Map<String, dynamic>.from(snapshot.data!.value as Map);
-          bf = data['breakfast'] ?? bf;
-          lu = data['lunch'] ?? lu;
-          dn = data['dinner'] ?? dn;
+        
+        if (snapshot.hasData) {
+          // 1. Weekly template override
+          final weekSnap = snapshot.data![0];
+          if (weekSnap.exists && weekSnap.value != null) {
+            final wData = Map<String, dynamic>.from(weekSnap.value as Map);
+            bf = wData['breakfast'] ?? bf;
+            lu = wData['lunch'] ?? lu;
+            dn = wData['dinner'] ?? dn;
+          }
+          // 2. Daily override
+          final daySnap = snapshot.data![1];
+          if (daySnap.exists && daySnap.value != null) {
+            final dData = Map<String, dynamic>.from(daySnap.value as Map);
+            bf = dData['breakfast'] ?? bf;
+            lu = dData['lunch'] ?? lu;
+            dn = dData['dinner'] ?? dn;
+          }
         }
 
         final now = DateTime.now();
@@ -322,39 +459,39 @@ Set<String> globalAdminHiddenNotices = {};
 
 const Map<int, Map<String, String>> defaultWeeklyMenu = {
   DateTime.monday: {
-    'breakfast': 'ચા, કોફી, પૌંઆ',
-    'lunch': 'દાળ, ભાત, શાક, રોટલી',
-    'dinner': 'ખીચડી, કઢી, ભાખરી, શાક',
+    'breakfast': 'ચા, કોફી અને પૌંઆ',
+    'lunch': 'ભીંડી મસાલા, ચણા, દાલ (મીઠી/તીખી), ચાવલ, રોટી, સલાડ',
+    'dinner': 'દમ આલુ, વેજ બિરયાની, રોટી, સલાડ',
   },
   DateTime.tuesday: {
-    'breakfast': 'ચા, કોફી, ઈડલી-સાંભાર',
-    'lunch': 'દાળ-બાટી, છાશ, પાપડ',
-    'dinner': 'પુલાવ, કઢી, રોટલી, શાક',
+    'breakfast': 'ચા, કોફી, મસાલા પુરી/ મેંદુ વડા',
+    'lunch': 'કેબીજ મટર, મુંગ, દહીં/છાશ, દાલ (મીઠી/તીખી), ચાવલ, રોટી, સલાડ, છાશ, ગોળ',
+    'dinner': 'મિક્સ વેજ, દાલ ફ્રાય, જીરા રાઇસ, રોટી, સલાડ',
   },
   DateTime.wednesday: {
-    'breakfast': 'ચા, કોફી, મેદુવડા',
-    'lunch': 'ભાજી-પરોઠા, છાશ, સલાડ',
-    'dinner': 'વઘારેલો રોટલો, સેવ-ટમેટા, ખીચડી',
+    'breakfast': 'ચા, કોફી, થેપલા/ચિલા',
+    'lunch': 'આલુ ગોબી (ફુલાવર), ચણા મસાલા, દાલ (મીઠી/તીખી), ચાવલ, રોટી, છાશ, સલાડ',
+    'dinner': 'દાલ બાટી, લસુન ચટણી, પાપડ, લીંબુ',
   },
   DateTime.thursday: {
     'breakfast': 'ચા, કોફી, ઉપમા',
-    'lunch': 'કઢી, ભાત, શાક, રોટલી',
-    'dinner': 'ઢોસા, સાંભાર, ચટણી',
+    'lunch': 'ચણા દાલ, બેગન મસાલા/સોયાબીન, દાલ (મીઠી/તીખી), ચાવલ, રોટી, છાશ, સલાડ, ગોળ',
+    'dinner': 'પનીર મસાલા, ફ્રાય રાઇસ, રોટી, સલાડ',
   },
   DateTime.friday: {
-    'breakfast': 'ચા, કોફી, થેપલા',
-    'lunch': 'છોલે-ભટુરે, છાશ, અથાણું',
-    'dinner': 'પાવભાજી, સલાડ',
+    'breakfast': 'ચા, કોફી, આલુ પરાઠા/સેન્ડવીચ ઢોકળા',
+    'lunch': 'મિક્સ વેજ (ઊંધિયું), તુવેર, દાલ (મીઠી/તીખી), ચાવલ, રોટી, છાશ/દહીં, સલાડ',
+    'dinner': 'ભાજી, પરોઠા, પુલાવ સલાડ',
   },
   DateTime.saturday: {
-    'breakfast': 'ચા, કોફી, સમોસા',
-    'lunch': 'મઠ, ભાત, શાક, પુરી',
-    'dinner': 'મંચુરિયન, ફ્રાઈડ રાઈસ',
+    'breakfast': 'ચા, કોફી, સમોસા/સેવ ખમણી',
+    'lunch': 'આલુ પ્યાસ, ચણા/ ચોલી, દાલ (મીઠી/તીખી), ચાવલ, રોટી, છાશ/દહીં, સલાડ, ગોળ',
+    'dinner': 'છોલે ભટુરે, પુરી, મીઠી ખીર',
   },
   DateTime.sunday: {
-    'breakfast': 'ચા, કોફી, જલેબી-ફાફડા',
-    'lunch': 'પંજાબી થાળી (પનીર, નાન, દાળ મખની)',
-    'dinner': 'દાળ-ઢોકળી, છાશ',
+    'breakfast': 'ચા, કોફી, પાપડી/ગાંઠીયા',
+    'lunch': 'આલુ ગોબી, કેબીજ મટર, દાલ (મીઠી/તીખી), ચાવલ, રોટી, છાશ, સલાડ',
+    'dinner': 'ઇડલી સંભાર, નારિયેળ ચટણી',
   },
 };
 
@@ -8280,7 +8417,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.33",
+              "Version 1.0.35",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
