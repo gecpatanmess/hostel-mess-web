@@ -6428,6 +6428,7 @@ class AdminAttendanceScreen extends StatefulWidget {
 }
 
 class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+  bool _isFetchingData = false;
   @override
   void initState() {
     super.initState();
@@ -8185,73 +8186,82 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: brandBg,
-        appBar: AppBar(
-          backgroundColor: brandOrange,
-          title: const Text(
-            "Attendance Sheet",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white),
-          // --- TEMPORARY EDITING BLOCK START ---
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.delete_forever, color: Colors.white),
-              tooltip: "Factory Reset Data",
-              onPressed: _promptResetPassword,
-            ),
-            Row(
-              children: [
-                const Text(
-                  "Enable Edit",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
+    return Stack(
+      children: [
+        DefaultTabController(
+          length: 2,
+          child: Scaffold(
+            backgroundColor: brandBg,
+            appBar: AppBar(
+              backgroundColor: brandOrange,
+              title: const Text(
+                "Attendance Sheet",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              iconTheme: const IconThemeData(color: Colors.white),
+              // --- TEMPORARY EDITING BLOCK START ---
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.delete_forever, color: Colors.white),
+                  tooltip: "Factory Reset Data",
+                  onPressed: _promptResetPassword,
                 ),
-                Switch(
-                  value: isEditingEnabled,
-                  activeColor: Colors.white,
-                  onChanged: (val) {
-                    if (val) {
-                      // Force rebuild so switch visually snaps back to OFF immediately
-                      setState(() {
-                        isEditingEnabled = false;
-                      });
-                      _promptEditPassword();
-                    } else {
-                      setState(() {
-                        isEditingEnabled = false;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Editing mode disabled."),
-                          duration: Duration(seconds: 1),
-                        ),
-                      );
-                    }
-                  },
+                Row(
+                  children: [
+                    const Text(
+                      "Enable Edit",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Switch(
+                      value: isEditingEnabled,
+                      activeColor: Colors.white,
+                      onChanged: (val) {
+                        if (val) {
+                          // Force rebuild so switch visually snaps back to OFF immediately
+                          setState(() {
+                            isEditingEnabled = false;
+                          });
+                          _promptEditPassword();
+                        } else {
+                          setState(() {
+                            isEditingEnabled = false;
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Editing mode disabled."),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ],
+              // --- TEMPORARY EDITING BLOCK END ---
+              bottom: const TabBar(
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                indicatorColor: Colors.white,
+                tabs: [
+                  Tab(text: "Daily View"),
+                  Tab(text: "Monthly View"),
+                ],
+              ),
             ),
-          ],
-          // --- TEMPORARY EDITING BLOCK END ---
-          bottom: const TabBar(
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            indicatorColor: Colors.white,
-            tabs: [
-              Tab(text: "Daily View"),
-              Tab(text: "Monthly View"),
-            ],
+            body: TabBarView(children: [_buildDailyView(), _buildMonthlyView()]),
           ),
         ),
-        body: TabBarView(children: [_buildDailyView(), _buildMonthlyView()]),
-      ),
+        if (_isFetchingData)
+          Container(
+            color: Colors.black.withValues(alpha: 0.3),
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+      ],
     );
   }
 }
