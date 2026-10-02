@@ -19,6 +19,68 @@ import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:dio/dio.dart'; // For OTP/Email verification API calls
 
+const String RENDER_API_URL = "https://gecpatan-mess.onrender.com";
+Map<String, DailyRecord> globalApiAttendanceMap = {};
+Set<String> _fetchedApiMonths = {};
+
+Future<void> fetchAttendanceMonth(int year, int month) async {
+  String monthKey = "$year-$month";
+  if (_fetchedApiMonths.contains(monthKey)) return;
+  try {
+    final dio = Dio();
+    dio.options.receiveTimeout = const Duration(seconds: 10);
+    dio.options.sendTimeout = const Duration(seconds: 10);
+    final response = await dio.get('$RENDER_API_URL/attendance-history?year=$year&month=$month');
+    if (response.data != null && response.data['success'] == true) {
+      List data = response.data['data'];
+      for (var item in data) {
+         try {
+           DateTime itemDate = DateTime.parse(item['attendance_date']).toLocal();
+           String key = "${itemDate.year}-${itemDate.month}-${itemDate.day}_${item['room_no']}_${item['student_name']}";
+           DailyRecord rec = DailyRecord();
+           rec.l = item['lunch_status'] ?? '';
+           rec.d = item['dinner_status'] ?? '';
+           globalApiAttendanceMap[key] = rec;
+         } catch(e) {}
+      }
+      _fetchedApiMonths.add(monthKey);
+    }
+  } catch(e) {
+    print("API Error: $e");
+  }
+}
+
+DailyRecord? getAttendanceMerged(String key) {
+  DateTime now = DateTime.now();
+  String todayPrefix = "${now.year}-${now.month}-${now.day}_";
+  if (key.startsWith(todayPrefix)) {
+    return globalAttendanceMap[key];
+  }
+  return globalApiAttendanceMap[key] ?? globalAttendanceMap[key];
+}
+
+void forEachMergedAttendance(void Function(String key, DailyRecord rec) action) {
+  Set<String> processed = {};
+  globalAttendanceMap.forEach((key, rec) {
+    DateTime now = DateTime.now();
+    String todayPrefix = "${now.year}-${now.month}-${now.day}_";
+    if (key.startsWith(todayPrefix)) {
+      action(key, rec);
+      processed.add(key);
+    }
+  });
+  globalApiAttendanceMap.forEach((key, rec) {
+    action(key, rec);
+    processed.add(key);
+  });
+  globalAttendanceMap.forEach((key, rec) {
+    if (!processed.contains(key)) {
+      action(key, rec);
+      processed.add(key);
+    }
+  });
+}
+
 String formatDateTime(DateTime dt) {
   String pad(int n) => n.toString().padLeft(2, '0');
   String period = dt.hour >= 12 ? 'PM' : 'AM';
@@ -3635,13 +3697,20 @@ class StudentDashboardScreen extends StatefulWidget {
 }
 
 class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+  bool _isFetchingData = false;
   @override
   void initState() {
     super.initState();
     globalSyncTrigger.addListener(_onSync);
     // Auto-refresh when dashboard opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       SyncService.fetchNow();
+      if (mounted) setState(() { _isFetchingData = true; });
+      DateTime now = DateTime.now();
+      for (int m = 1; m <= now.month; m++) {
+        await fetchAttendanceMonth(now.year, m);
+      }
+      if (mounted) setState(() { _isFetchingData = false; });
     });
   }
 
@@ -3861,7 +3930,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     int absentDays = 0;
     int actualBill = 0;
 
-    globalAttendanceMap.forEach((key, rec) {
+    forEachMergedAttendance((key, rec) {
       if (!key.endsWith(suffix)) return;
       String datePart = key.split('_')[0];
       List<String> parts = datePart.split('-');
@@ -4213,8 +4282,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: brandBg,
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: brandBg,
       appBar: AppBar(
         backgroundColor: brandOrange,
         title: const Text(
@@ -4492,6 +4563,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
           ),
         ],
       ),
+        ),
+        if (_isFetchingData)
+          Container(
+            color: Colors.black.withValues(alpha: 0.3),
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+      ],
     );
   }
 }
@@ -4575,13 +4653,20 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  bool _isFetchingData = false;
   @override
   void initState() {
     super.initState();
     globalSyncTrigger.addListener(_onSync);
     // Auto-refresh when dashboard opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       SyncService.fetchNow();
+      if (mounted) setState(() { _isFetchingData = true; });
+      DateTime now = DateTime.now();
+      for (int m = 1; m <= now.month; m++) {
+        await fetchAttendanceMonth(now.year, m);
+      }
+      if (mounted) setState(() { _isFetchingData = false; });
     });
   }
 
@@ -4601,7 +4686,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     
     Map<String, Map<String, int>> studentMonthStats = {};
 
-    globalAttendanceMap.forEach((key, rec) {
+    forEachMergedAttendance((key, rec) {
       List<String> parts = key.split('_');
       if (parts.length >= 3) {
         String datePart = parts[0]; 
@@ -5269,14 +5354,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: brandBg,
-      appBar: AppBar(
-        backgroundColor: brandOrange,
-        title: const Text(
-          "Admin Dashboard",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-        ),
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: brandBg,
+          appBar: AppBar(
+            backgroundColor: brandOrange,
+            title: const Text(
+              "Admin Dashboard",
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
@@ -5667,6 +5754,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         ],
       ),
+        ),
+        if (_isFetchingData)
+          Container(
+            color: Colors.black.withValues(alpha: 0.3),
+            child: const Center(child: CircularProgressIndicator()),
+          ),
+      ],
     );
   }
 }
@@ -6429,7 +6523,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       bool hasData = false;
       for (int d = 1; d <= daysInMonth; d++) {
         String key = "$year-$m-${d}_${student.roomNo}_${student.name}";
-        var rec = globalAttendanceMap[key];
+        var rec = getAttendanceMerged(key);
         if (rec != null) {
           hasData = true;
           bool isP = rec.l == 'P' || rec.d == 'P';
@@ -6733,7 +6827,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       if (i < roomStudents.length) {
         String name = roomStudents[i].name;
         String key = "${dateStr}_${room}_$name";
-        DailyRecord? rec = globalAttendanceMap[key];
+        DailyRecord? rec = getAttendanceMerged(key);
         int total = 0;
         if (rec != null) {
           if (rec.l == 'P') total += 70;
@@ -6829,8 +6923,14 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                     firstDate: DateTime(2020),
                     lastDate: DateTime(2030),
                   );
-                  if (picked != null)
-                    setState(() => _selectedDailyDate = picked);
+                  if (picked != null) {
+                    setState(() => _isFetchingData = true);
+                    await fetchAttendanceMonth(picked.year, picked.month);
+                    setState(() {
+                      _selectedDailyDate = picked;
+                      _isFetchingData = false;
+                    });
+                  }
                 },
                 icon: const Icon(Icons.calendar_month, color: Colors.white),
                 label: Text(
@@ -7098,7 +7198,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       for (int d = 1; d <= daysInMonth; d++) {
         String dayKey =
             "${_selectedMonth.year}-${_selectedMonth.month}-${d}_${student.roomNo}_${student.name}";
-        var rec = globalAttendanceMap[dayKey];
+        var rec = getAttendanceMerged(dayKey);
         if (rec != null) {
           bool isP = rec.l == 'P' || rec.d == 'P';
           if (isP)
@@ -7182,7 +7282,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
             for (int d = 1; d <= daysInMonth; d++) {
               String dayKey =
                   "${_selectedMonth.year}-${_selectedMonth.month}-${d}_${student.roomNo}_${student.name}";
-              var rec = globalAttendanceMap[dayKey];
+              var rec = getAttendanceMerged(dayKey);
 
               if (rec != null || isEditingEnabled) {
                 int dailyTotal = 0;
@@ -7513,11 +7613,12 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                 int a = 0;
                                 for (int day = 1; day <= 31; day++) {
                                   String dKey = "${_selectedMonth.year}-${m}-${day}_${student.roomNo}_${student.name}";
-                                  if (globalAttendanceMap.containsKey(dKey)) {
-                                    if (globalAttendanceMap[dKey]!.l == "P") p++;
-                                    else if (globalAttendanceMap[dKey]!.l == "A") a++;
-                                    if (globalAttendanceMap[dKey]!.d == "P") p++;
-                                    else if (globalAttendanceMap[dKey]!.d == "A") a++;
+                                  DailyRecord? rec = getAttendanceMerged(dKey);
+                                  if (rec != null) {
+                                    if (rec.l == "P") p++;
+                                    else if (rec.l == "A") a++;
+                                    if (rec.d == "P") p++;
+                                    else if (rec.d == "A") a++;
                                   }
                                 }
                                 int actual = p * 70;
@@ -7553,11 +7654,12 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                 int a = 0;
                                 for (int day = 1; day <= 31; day++) {
                                   String dKey = "${_selectedMonth.year}-${m}-${day}_${student.roomNo}_${student.name}";
-                                  if (globalAttendanceMap.containsKey(dKey)) {
-                                    if (globalAttendanceMap[dKey]!.l == "P") p++;
-                                    else if (globalAttendanceMap[dKey]!.l == "A") a++;
-                                    if (globalAttendanceMap[dKey]!.d == "P") p++;
-                                    else if (globalAttendanceMap[dKey]!.d == "A") a++;
+                                  DailyRecord? rec = getAttendanceMerged(dKey);
+                                  if (rec != null) {
+                                    if (rec.l == "P") p++;
+                                    else if (rec.l == "A") a++;
+                                    if (rec.d == "P") p++;
+                                    else if (rec.d == "A") a++;
                                   }
                                 }
                                 int actual = p * 70;
@@ -7738,16 +7840,20 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.chevron_left, color: brandDark),
-                    onPressed: () {
+                    onPressed: () async {
+                      DateTime newMonth = DateTime(
+                        _selectedMonth.month == 1
+                            ? _selectedMonth.year - 1
+                            : _selectedMonth.year,
+                        _selectedMonth.month == 1
+                            ? 12
+                            : _selectedMonth.month - 1,
+                      );
+                      setState(() => _isFetchingData = true);
+                      await fetchAttendanceMonth(newMonth.year, newMonth.month);
                       setState(() {
-                        _selectedMonth = DateTime(
-                          _selectedMonth.month == 1
-                              ? _selectedMonth.year - 1
-                              : _selectedMonth.year,
-                          _selectedMonth.month == 1
-                              ? 12
-                              : _selectedMonth.month - 1,
-                        );
+                        _selectedMonth = newMonth;
+                        _isFetchingData = false;
                       });
                     },
                   ),
@@ -7761,16 +7867,20 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.chevron_right, color: brandDark),
-                    onPressed: () {
+                    onPressed: () async {
+                      DateTime newMonth = DateTime(
+                        _selectedMonth.month == 12
+                            ? _selectedMonth.year + 1
+                            : _selectedMonth.year,
+                        _selectedMonth.month == 12
+                            ? 1
+                            : _selectedMonth.month + 1,
+                      );
+                      setState(() => _isFetchingData = true);
+                      await fetchAttendanceMonth(newMonth.year, newMonth.month);
                       setState(() {
-                        _selectedMonth = DateTime(
-                          _selectedMonth.month == 12
-                              ? _selectedMonth.year + 1
-                              : _selectedMonth.year,
-                          _selectedMonth.month == 12
-                              ? 1
-                              : _selectedMonth.month + 1,
-                        );
+                        _selectedMonth = newMonth;
+                        _isFetchingData = false;
                       });
                     },
                   ),
@@ -8166,7 +8276,8 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     String suffix = "_${widget.roomNo}_${widget.name}";
-    List<String> myKeys = globalAttendanceMap.keys
+    Set<String> allKeys = {...globalAttendanceMap.keys, ...globalApiAttendanceMap.keys};
+    List<String> myKeys = allKeys
         .where((k) => k.endsWith(suffix))
         .toList();
 
@@ -8187,7 +8298,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
         }
       }
 
-      DailyRecord rec = globalAttendanceMap[key]!;
+      DailyRecord rec = getAttendanceMerged(key)!;
       int total = 0;
       if (rec.l == 'P') total += 70;
       if (rec.d == 'P') total += 70;
