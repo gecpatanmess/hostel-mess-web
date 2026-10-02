@@ -2062,6 +2062,102 @@ class _LoginScreenState extends State<LoginScreen> {
 
   /// Validates email via backend, then shows OTP dialog
   Future<void> _verifyEmailAndOtp({required bool isStudentForm}) async {
+    if (isStudentForm && !hasSavedStudent) {
+      if (selectedRoom == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a room first.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      if (selectedStudentName == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select your name first.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      String typedPin = _studentPinController.text.trim();
+      if (typedPin.length != 8) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be 8 characters.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      
+      try {
+        final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+        if (snap.exists && snap.value != null) {
+          globalRegisteredStudents.clear();
+          for(var s in (snap.value as List)) {
+            globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+          }
+        }
+      } catch(e) {}
+      
+      var roomStudents = globalRegisteredStudents.where((s) => s.roomNo == selectedRoom!).toList();
+      RegisteredStudent? existingStudent;
+      try {
+        existingStudent = roomStudents.firstWhere((s) => s.name.toLowerCase() == selectedStudentName!.toLowerCase());
+      } catch (e) {}
+
+      if (existingStudent != null) {
+        if (existingStudent.pin.isEmpty) {
+          if (typedPin != _studentRePinController.text) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.redAccent));
+            return;
+          }
+          if (studentPhotoUrl == null && (existingStudent.photoUrl == null || existingStudent.photoUrl!.isEmpty)) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload your photo to continue.'), backgroundColor: Colors.redAccent));
+            return;
+          }
+        } else if (existingStudent.pin != typedPin) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wrong Password! Please enter your correct 8-character password.'), backgroundColor: Colors.redAccent));
+          return;
+        }
+      } else {
+        if (typedPin != _studentRePinController.text) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.redAccent));
+          return;
+        }
+        if (studentPhotoUrl == null) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload a student photo for new registration.'), backgroundColor: Colors.redAccent));
+          return;
+        }
+        if (roomStudents.length >= 4) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This room is full (Max 4 students).'), backgroundColor: Colors.redAccent));
+          return;
+        }
+      }
+    } else if (!isStudentForm && !hasSavedAdmin) {
+      if (_adminMobileController.text.length != 10) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a valid 10-digit mobile number.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      if (_adminNameController.text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your name.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      if (_adminPasswordController.text.length != 8) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be exactly 8 characters.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      if (adminPhotoUrl == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload a photo.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      // Check if admin exists and password matches
+      String phone = _adminMobileController.text.trim();
+      String pin = _adminPasswordController.text;
+      AdminUser? admin;
+      try {
+        admin = globalAdmins.firstWhere((a) => a.phone == phone);
+      } catch (e) {
+        admin = null;
+      }
+      if (admin == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Admin account not found. Please contact super admin.'), backgroundColor: Colors.redAccent));
+        return;
+      } else {
+        if (admin.pin != hashPassword(pin) && admin.pin != pin) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incorrect password!'), backgroundColor: Colors.redAccent));
+          return;
+        }
+      }
+    }
+
     final email = isStudentForm
         ? _studentEmailController.text.trim()
         : _adminEmailController.text.trim();
@@ -8354,7 +8450,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const SizedBox(height: 48),
             // Footer
             Text(
-              "Version 1.0.41",
+              "Version 1.0.42",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
           ],
