@@ -1060,13 +1060,33 @@ class SyncService {
   static bool _pollCooldown = false;
 
   /// Immediately push ONLY the polls node to Firebase.
-  static Future<void> pushPollsNow() async {
+  static Future<void> pushPollsNow({bool clear = false}) async {
     _pollCooldown = true;
     try {
-      await _dbRef.child('polls').set({
-        'L': todayPollVotes['L']?.toList() ?? [],
-        'D': todayPollVotes['D']?.toList() ?? [],
-      });
+      if (clear) {
+        await _dbRef.child('polls').set({
+          'L': [],
+          'D': [],
+        });
+      } else {
+        await _dbRef.child('polls').runTransaction((Object? post) {
+          if (post == null) {
+            return Transaction.success({
+              'L': todayPollVotes['L']?.toList() ?? [],
+              'D': todayPollVotes['D']?.toList() ?? [],
+            });
+          }
+          Map<dynamic, dynamic> data = post as Map<dynamic, dynamic>;
+          Set<String> lSet = Set<String>.from(data['L'] ?? []);
+          Set<String> dSet = Set<String>.from(data['D'] ?? []);
+          lSet.addAll(todayPollVotes['L'] ?? []);
+          dSet.addAll(todayPollVotes['D'] ?? []);
+          return Transaction.success({
+            'L': lSet.toList(),
+            'D': dSet.toList(),
+          });
+        });
+      }
     } catch(e) {
       print("Push polls error: $e");
     }
@@ -1078,10 +1098,12 @@ class SyncService {
   /// Push only ONE attendance record to Firebase
   static Future<void> pushAttendance(String key, DailyRecord rec) async {
     try {
-      await _dbRef.child('attendance').child(key).set({
-        'l': rec.l,
-        'd': rec.d,
-      });
+      Map<String, dynamic> updateData = {};
+      if (rec.l.isNotEmpty) updateData['l'] = rec.l;
+      if (rec.d.isNotEmpty) updateData['d'] = rec.d;
+      if (updateData.isNotEmpty) {
+        await _dbRef.child('attendance').child(key).update(updateData);
+      }
     } catch(e) {
       print("Push attendance error: $e");
     }
@@ -2409,9 +2431,8 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       }
-      if (studentPhotoUrl == null) {
-        // Check if existing photo actually exists on disk
-        if ((existingStudent.photoUrl == null || existingStudent.photoUrl!.isEmpty)) {
+      if (existingStudent.photoUrl == null || existingStudent.photoUrl!.isEmpty) {
+        if (studentPhotoUrl == null) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -2423,9 +2444,9 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           return;
         }
-        studentPhotoUrl = existingStudent.photoUrl;
-      } else {
         existingStudent.photoUrl = studentPhotoUrl;
+      } else {
+        studentPhotoUrl = existingStudent.photoUrl; // Use existing photo unconditionally
       }
       await saveRegisteredStudents();
       SyncService.pushStudents();
@@ -2768,6 +2789,22 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _buildStudentPortal() {
+    bool isRegisteredStudent = false;
+    String? existingPhoto;
+    if (selectedRoom != null && selectedStudentName != null) {
+      try {
+        final st = globalRegisteredStudents.firstWhere(
+          (s) => s.roomNo == selectedRoom && s.name == selectedStudentName
+        );
+        if (st.pin.isNotEmpty) {
+          isRegisteredStudent = true;
+          existingPhoto = st.photoUrl;
+        }
+      } catch(e) {}
+    }
+    bool canUploadPhoto = !isRegisteredStudent || (existingPhoto == null || existingPhoto.isEmpty);
+    String? displayPhotoUrl = (isRegisteredStudent && !canUploadPhoto) ? existingPhoto : studentPhotoUrl;
+
     return Container(
       key: const ValueKey("StudentPortal"),
       padding: const EdgeInsets.all(24),
@@ -2806,7 +2843,9 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 children: [
                   GestureDetector(
-                    onTap: () => _pickImage(true),
+                    onTap: canUploadPhoto ? () => _pickImage(true) : () {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot change your photo after registration.'), backgroundColor: brandOrange));
+                    },
                     child: Stack(
                       children: [
                         Container(
@@ -2815,10 +2854,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: BoxDecoration(
                             color: const Color(0xFFFDE9D2),
                             shape: BoxShape.circle,
-                            image: (studentPhotoUrl != null && studentPhotoUrl!.isNotEmpty) ? DecorationImage(image: NetworkImage(studentPhotoUrl!), fit: BoxFit.cover)
+                            image: (displayPhotoUrl != null && displayPhotoUrl.isNotEmpty) ? DecorationImage(image: NetworkImage(displayPhotoUrl), fit: BoxFit.cover)
                                 : null,
                           ),
-                          child: (studentPhotoUrl == null || studentPhotoUrl!.isEmpty)
+                          child: (displayPhotoUrl == null || displayPhotoUrl.isEmpty)
                               ? const Icon(
                                   Icons.camera_alt_outlined,
                                   color: brandOrange,
@@ -2826,7 +2865,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                 )
                               : null,
                         ),
-                        Positioned(
+                        if (canUploadPhoto)
+                          Positioned(
                           bottom: 2,
                           right: 2,
                           child: Container(
@@ -4723,7 +4763,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         setState(() {
                           todayPollVotes = {'L': <String>{}, 'D': <String>{}};
                         });
-                        SyncService.pushPollsNow();
+                        SyncService.pushPollsNow(clear: true);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Poll data cleared!')),
                         );
