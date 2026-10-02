@@ -94,6 +94,7 @@ class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
         'lunch': _luCtrl.text.trim(),
         'dinner': _dnCtrl.text.trim(),
       });
+      globalSyncTrigger.notifyListeners();
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Menu for day $_selectedDay updated!"), backgroundColor: Colors.green));
     } catch(e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error updating menu"), backgroundColor: Colors.red));
@@ -5144,6 +5145,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       'lunch': luCtrl.text.trim(),
                       'dinner': dnCtrl.text.trim(),
                     });
+                    globalSyncTrigger.notifyListeners();
                     if (mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Today's Menu updated!"), backgroundColor: Colors.green));
@@ -8382,7 +8384,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const SizedBox(height: 48),
             // Footer
             Text(
-              "Version 1.0.39",
+              "Version 1.0.40",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
           ],
