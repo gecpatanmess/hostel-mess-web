@@ -5344,12 +5344,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ListTile(
               leading: const Icon(Icons.set_meal, color: brandDark),
               title: const Text(
-                'Set Menu',
+                'Set Menu (Today)',
                 style: TextStyle(fontWeight: FontWeight.w500),
               ),
               onTap: () {
                 Navigator.pop(context);
                 _showSetMenuDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_calendar, color: brandDark),
+              title: const Text(
+                'Edit Weekly Timetable',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                showDialog(context: context, builder: (context) => const WeeklyMenuEditorWidget());
               },
             ),
             Builder(
@@ -8423,7 +8434,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const Divider(color: Color(0xFF334155)),
             const SizedBox(height: 16),
             Text(
-              "Version 1.0.36",
+              "Version 1.0.37",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
             const SizedBox(height: 32),
