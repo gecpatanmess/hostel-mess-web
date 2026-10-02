@@ -1,23 +1,13 @@
-﻿import re
-
 with open('lib/main.dart', 'r', encoding='utf-8') as f:
     content = f.read()
-
-# Let's search for "About Developers" in the code
-matches = re.finditer(r'ListTile\(\s*leading:\s*const\s*Icon\(Icons\.info_outline\),\s*title:\s*const\s*Text\(\'About Developers\'\)', content)
-count = sum(1 for _ in matches)
-print(f"Found 'About Developers' ListTile {count} times.")
-
-# Also check for AdminDashboardScreen drawer
-admin_drawer = re.search(r'class AdminDashboardScreen.*?Widget _buildAdminDrawer.*?About Developers', content, re.DOTALL)
-student_drawer = re.search(r'class StudentDashboardScreen.*?Widget _buildStudentDrawer.*?About Developers', content, re.DOTALL)
-
-if admin_drawer:
-    print("Found in Admin drawer")
+idx = content.find('Edit Weekly Timetable')
+if idx != -1:
+    print('FOUND at index', idx)
+    print(content[max(0,idx-300):idx+300])
 else:
-    print("NOT found in Admin drawer")
-    
-if student_drawer:
-    print("Found in Student drawer")
-else:
-    print("NOT found in Student drawer")
+    print('NOT FOUND!')
+    # Check for Set Menu
+    idx2 = content.find('Set Menu')
+    if idx2 != -1:
+        print('Set Menu found at:', idx2)
+        print(content[max(0,idx2-100):idx2+500])
