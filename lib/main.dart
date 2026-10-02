@@ -71,9 +71,9 @@ class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
       final snap = await FirebaseDatabase.instance.ref('hostelData/weekly_template/$_selectedDay').get();
       if (snap.exists && snap.value != null) {
         final data = Map<String, dynamic>.from(snap.value as Map);
-        bf = data['breakfast'] ?? bf;
-        lu = data['lunch'] ?? lu;
-        dn = data['dinner'] ?? dn;
+        if (data['breakfast'] != null && data['breakfast'].toString().trim().isNotEmpty) bf = data['breakfast'];
+        if (data['lunch'] != null && data['lunch'].toString().trim().isNotEmpty) lu = data['lunch'];
+        if (data['dinner'] != null && data['dinner'].toString().trim().isNotEmpty) dn = data['dinner'];
       }
     } catch(e) {}
 
@@ -181,17 +181,17 @@ class ViewMenuTab extends StatelessWidget {
           final weekSnap = snapshot.data![0];
           if (weekSnap.exists && weekSnap.value != null) {
             final wData = Map<String, dynamic>.from(weekSnap.value as Map);
-            bf = wData['breakfast'] ?? bf;
-            lu = wData['lunch'] ?? lu;
-            dn = wData['dinner'] ?? dn;
+            if (wData['breakfast'] != null && wData['breakfast'].toString().trim().isNotEmpty) bf = wData['breakfast'];
+            if (wData['lunch'] != null && wData['lunch'].toString().trim().isNotEmpty) lu = wData['lunch'];
+            if (wData['dinner'] != null && wData['dinner'].toString().trim().isNotEmpty) dn = wData['dinner'];
           }
           // 2. Daily override
           final daySnap = snapshot.data![1];
           if (daySnap.exists && daySnap.value != null) {
             final dData = Map<String, dynamic>.from(daySnap.value as Map);
-            bf = dData['breakfast'] ?? bf;
-            lu = dData['lunch'] ?? lu;
-            dn = dData['dinner'] ?? dn;
+            if (dData['breakfast'] != null && dData['breakfast'].toString().trim().isNotEmpty) bf = dData['breakfast'];
+            if (dData['lunch'] != null && dData['lunch'].toString().trim().isNotEmpty) lu = dData['lunch'];
+            if (dData['dinner'] != null && dData['dinner'].toString().trim().isNotEmpty) dn = dData['dinner'];
           }
         }
 
@@ -3525,6 +3525,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   final TextEditingController _newAdminMobileCtrl = TextEditingController();
   final TextEditingController _newAdminPinCtrl = TextEditingController();
   final TextEditingController _changeAdminPinCtrl = TextEditingController();
+  final TextEditingController _newAdminEmailCtrl = TextEditingController();
 
   bool _pollCheckL = false;
   bool _pollCheckD = false;
@@ -4535,9 +4536,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   final TextEditingController _newAdminMobileCtrl = TextEditingController();
   final TextEditingController _newAdminPinCtrl = TextEditingController();
   final TextEditingController _changeAdminPinCtrl = TextEditingController();
+  final TextEditingController _newAdminEmailCtrl = TextEditingController();
 
   Widget _buildAdminsTab() {
-    
     return SingleChildScrollView(child: Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -4553,6 +4554,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           const SizedBox(height: 16),
           TextField(
+            controller: _newAdminEmailCtrl,
+            decoration: InputDecoration(labelText: "Email ID", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 16),
+          TextField(
             controller: _newAdminPinCtrl,
             decoration: InputDecoration(labelText: "8-character Password", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
             maxLength: 8,
@@ -4564,9 +4571,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: brandOrange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               onPressed: () async {
-                if (_newAdminMobileCtrl.text.length == 10 && _newAdminPinCtrl.text.length == 8) {
+                if (_newAdminMobileCtrl.text.length == 10 && _newAdminPinCtrl.text.length == 8 && _newAdminEmailCtrl.text.contains('@')) {
                   setState(() {
-                    globalAdmins.add(AdminUser(_newAdminMobileCtrl.text, hashPassword(_newAdminPinCtrl.text)));
+                    globalAdmins.add(AdminUser(_newAdminMobileCtrl.text, hashPassword(_newAdminPinCtrl.text), email: _newAdminEmailCtrl.text.trim()));
                   });
                   final prefs = await SharedPreferences.getInstance();
                   List<String> adminStrings = globalAdmins.map((a) => jsonEncode(a.toJson())).toList();
@@ -4575,49 +4582,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Admin created successfully!"), backgroundColor: Colors.green));
                   _newAdminMobileCtrl.clear();
                   _newAdminPinCtrl.clear();
+                  _newAdminEmailCtrl.clear();
                 } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter valid mobile and password."), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter valid mobile, email and password."), backgroundColor: Colors.red));
                 }
               },
               child: const Text("Create Admin", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(height: 40),
-          const Divider(),
-          const SizedBox(height: 20),
-          const Text("Change My Password", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: brandDark)),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _changeAdminPinCtrl,
-            decoration: InputDecoration(labelText: "New 8-character Password", border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
-            maxLength: 8,
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: brandDark, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              onPressed: () async {
-                if (_changeAdminPinCtrl.text.length == 8) {
-                  try {
-                    AdminUser currentAdmin = globalAdmins.firstWhere((a) => a.phone == widget.phone);
-                    setState(() {
-                      currentAdmin.pin = hashPassword(_changeAdminPinCtrl.text);
-                    });
-                    final prefs = await SharedPreferences.getInstance();
-                    List<String> adminStrings = globalAdmins.map((a) => jsonEncode(a.toJson())).toList();
-                    await prefs.setStringList('globalAdmins', adminStrings);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password updated successfully!"), backgroundColor: Colors.green));
-                    _changeAdminPinCtrl.clear();
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error updating password."), backgroundColor: Colors.red));
-                  }
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter 8 character password."), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text("Update Password", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -5038,9 +5008,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final snap = await FirebaseDatabase.instance.ref('hostelData/daily_menus/$todayStr').get();
       if (snap.exists && snap.value != null) {
         final data = Map<String, dynamic>.from(snap.value as Map);
-        initialBreakfast = data['breakfast'] ?? initialBreakfast;
-        initialLunch = data['lunch'] ?? initialLunch;
-        initialDinner = data['dinner'] ?? initialDinner;
+        if (data['breakfast'] != null && data['breakfast'].toString().trim().isNotEmpty) initialBreakfast = data['breakfast'];
+        if (data['lunch'] != null && data['lunch'].toString().trim().isNotEmpty) initialLunch = data['lunch'];
+        if (data['dinner'] != null && data['dinner'].toString().trim().isNotEmpty) initialDinner = data['dinner'];
       }
     } catch(e) {}
 
@@ -8384,7 +8354,7 @@ class AboutDevelopersScreen extends StatelessWidget {
             const SizedBox(height: 48),
             // Footer
             Text(
-              "Version 1.0.40",
+              "Version 1.0.41",
               style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
             ),
           ],
