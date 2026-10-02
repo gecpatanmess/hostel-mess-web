@@ -1098,6 +1098,12 @@ String hashPassword(String password) {
   return digest.toString();
 }
 
+
+int calculatePayableBill(int presentMealsCount) {
+  int actualBill = presentMealsCount * 70;
+  return math.max(actualBill, 3080);
+}
+
 class SyncService {
 
   static Future<String?> uploadImage(Uint8List bytes) async {
@@ -1149,6 +1155,7 @@ class SyncService {
           });
         });
       }
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push polls error: $e");
     }
@@ -1166,6 +1173,7 @@ class SyncService {
       if (updateData.isNotEmpty) {
         await _dbRef.child('attendance').child(key).update(updateData);
       }
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push attendance error: $e");
     }
@@ -1272,6 +1280,7 @@ class SyncService {
         });
       }
       await _dbRef.child('notices_trigger').set(DateTime.now().millisecondsSinceEpoch);
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push notices error: $e");
     }
@@ -1292,6 +1301,7 @@ class SyncService {
           'image_url': photoUrl
         });
       }
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push complaints error: $e");
     }
@@ -1301,6 +1311,7 @@ class SyncService {
   static Future<void> pushPaid() async {
     try {
       await _dbRef.child('paid').set(globalMonthlyPaid);
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push paid error: $e");
     }
@@ -1317,6 +1328,7 @@ class SyncService {
         });
       }
       await _dbRef.child('students').set(studentsList);
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push students error: $e");
     }
@@ -1328,6 +1340,7 @@ class SyncService {
       List<Map<String, dynamic>> adminsList = [];
       for(var a in globalAdmins) adminsList.add(a.toJson());
       await _dbRef.child('admins').set(adminsList);
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push admins error: $e");
     }
@@ -1339,7 +1352,8 @@ class SyncService {
       try {
         await _dbRef.child('menu').remove();
         await _supabase.from('menu').delete().eq('id', 1);
-      } catch(e){}
+        globalSyncTrigger.value++;
+    } catch(e){}
       return;
     }
     try {
@@ -1371,6 +1385,7 @@ class SyncService {
         'globalPollD': globalPollD,
         'globalPollDate': globalPollDate,
       });
+      globalSyncTrigger.value++;
     } catch(e) {
       print("Push switches error: $e");
     }
@@ -3952,7 +3967,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
     int payableBill = 0;
     if (presentDays > 0 || absentDays > 0) {
-      payableBill = math.max(actualBill, 3080);
+      payableBill = calculatePayableBill(actualBill ~/ 70);
     }
 
     String paymentKey = "$currentYear-${currentMonth}_${widget.roomNo}_${widget.name}";
@@ -4726,8 +4741,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       int mIdx = int.tryParse(ymParts[1]) ?? 1;
       String monthName = months[mIdx - 1];
 
-      int actualBill = counts['P']! * 70;
-      int payableBill = math.max(actualBill, 3080);
+      int payableBill = calculatePayableBill(counts['P']!);
 
       int paidAmt = globalMonthlyPaid[groupKey] ?? 0;
 
@@ -6537,7 +6551,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
         }
       }
       if (hasData) {
-        int payable = (p == 0 && a == 0) ? 0 : math.max(actual, 3080);
+        int payable = (p == 0 && a == 0) ? 0 : calculatePayableBill(actual ~/ 70);
         String pKey = "$year-${m}_${student.roomNo}_${student.name}";
         int paid = globalMonthlyPaid[pKey] ?? 0;
         yearly.add({
@@ -7216,7 +7230,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       if (present == 0 && absent == 0) {
         payable = 0;
       } else {
-        payable = math.max(actual, 3080);
+        payable = calculatePayableBill(actual ~/ 70);
       }
 
       int paidAmt = globalMonthlyPaid[monthKey] ?? 0;
@@ -7313,7 +7327,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
             if (currentPresent == 0 && currentAbsent == 0) {
               currentPayable = 0;
             } else {
-              currentPayable = math.max(currentActual, 3080);
+              currentPayable = calculatePayableBill(currentActual ~/ 70);
             }
             // --- TEMPORARY EDITING BLOCK END ---
             return Container(
@@ -7623,7 +7637,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                   }
                                 }
                                 int actual = p * 70;
-                                int payable = (p == 0 && a == 0) ? 0 : (actual > 3080 ? actual : 3080);
+                                int payable = (p == 0 && a == 0) ? 0 : calculatePayableBill(p);
                                 int due = payable - paid;
                                 if (p > 0 || a > 0 || paid > 0) {
                                   d.add([m.toString(), p.toString(), a.toString(), actual.toString(), payable.toString(), paid.toString(), due.toString()]);
@@ -7664,7 +7678,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                   }
                                 }
                                 int actual = p * 70;
-                                int payable = (p == 0 && a == 0) ? 0 : (actual > 3080 ? actual : 3080);
+                                int payable = (p == 0 && a == 0) ? 0 : calculatePayableBill(p);
                                 int due = payable - paid;
                                 if (p > 0 || a > 0 || paid > 0) {
                                   d.add([m.toString(), p.toString(), a.toString(), actual.toString(), payable.toString(), paid.toString(), due.toString()]);
