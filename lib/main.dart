@@ -3228,7 +3228,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
             ),              ], // End of hasSavedStudent
-              if (hasSavedStudent) ...[
+              if (hasSavedStudent || (!hasSavedStudent && selectedStudentName != null && !_isCreatingPassword)) ...[
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -3252,18 +3252,18 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   elevation: 0,
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      "Student Login",
-                      style: TextStyle(
+                      (!hasSavedStudent && _isCreatingPassword) ? "Sign Up & Login" : "Student Login",
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    SizedBox(width: 8),
-                    Icon(Icons.arrow_forward, size: 20),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.arrow_forward, size: 20),
                   ],
                 ),
               ),
@@ -8833,21 +8833,46 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                           onPressed: () {
                             showDialog(
                               context: context,
-                              builder: (dCtx) => AlertDialog(
-                                title: const Text('Confirm Delete'),
-                                content: Text('Delete ${s.name}?'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
-                                  TextButton(
-                                    onPressed: () {
-                                      globalRegisteredStudents.remove(s);
-                                      SyncService.pushStudents();
-                                      Navigator.pop(dCtx);
-                                    }, 
-                                    child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                                  ),
-                                ],
-                              )
+                              builder: (dCtx) {
+                                String deleteText = "";
+                                return StatefulBuilder(
+                                  builder: (context, setState) {
+                                    return AlertDialog(
+                                      title: const Text('Confirm Delete'),
+                                      content: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text('Delete ${s.name}?'),
+                                          const SizedBox(height: 10),
+                                          TextField(
+                                            autofocus: true,
+                                            obscureText: true,
+                                            onChanged: (val) {
+                                              setState(() {
+                                                deleteText = val;
+                                              });
+                                            },
+                                            decoration: const InputDecoration(
+                                              border: OutlineInputBorder(),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+                                        TextButton(
+                                          onPressed: deleteText == 'DELETE' ? () {
+                                            globalRegisteredStudents.remove(s);
+                                            SyncService.pushStudents();
+                                            Navigator.pop(dCtx);
+                                          } : null, 
+                                          child: Text('Delete', style: TextStyle(color: deleteText == 'DELETE' ? Colors.red : Colors.grey)),
+                                        ),
+                                      ],
+                                    );
+                                  }
+                                );
+                              }
                             );
                           },
                         ),
