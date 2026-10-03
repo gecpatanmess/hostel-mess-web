@@ -14,6 +14,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'export_service.dart';
+import 'splash_screen.dart';
 import 'package:flutter/services.dart'; // Added for inputFormatters
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -1448,7 +1449,7 @@ class MyApp extends StatelessWidget {
       builder: (context, child) {
         return ResponsiveWrapper(child: child!);
       },
-      home: UpdateCheckerWrapper(child: initialScreen ?? const LoginScreen()),
+      home: SplashScreen(nextScreen: UpdateCheckerWrapper(child: initialScreen ?? const LoginScreen())), 
           );
         },
       );
