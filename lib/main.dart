@@ -601,6 +601,8 @@ class RegisteredStudent {
       email: parseStr(json['email']),
     );
   }
+
+  bool get isValid => name.isNotEmpty && roomNo.isNotEmpty;
 }
 
 Future<void> saveRegisteredStudents() async {
@@ -1075,7 +1077,7 @@ Future<void> _loadDataFromPrefs() async {
   List<String>? studentStrs = prefs.getStringList('globalRegisteredStudents');
   if (studentStrs != null && studentStrs.isNotEmpty) {
     // If we have saved students, overwrite the fake ones completely
-    globalRegisteredStudents = studentStrs.map((s) => RegisteredStudent.fromJson(jsonDecode(s))).toList();
+    globalRegisteredStudents = studentStrs.map((s) => RegisteredStudent.fromJson(jsonDecode(s))).where((s) => s.isValid).toList();
   }
   
   String? userType = prefs.getString('userType');
@@ -1252,7 +1254,8 @@ class SyncService {
         if (data['students'] != null) {
           for(var s in (data['students'] as List)) {
             if (s != null) {
-              globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+              var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
+              if (st.isValid) globalRegisteredStudents.add(st);
             }
           }
         }
@@ -1649,7 +1652,8 @@ class SyncService {
         if (data['students'] != null) {
           for(var s in (data['students'] as List)) {
             if (s != null) {
-              globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+              var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
+              if (st.isValid) globalRegisteredStudents.add(st);
             }
           }
         }
@@ -2201,7 +2205,8 @@ class _LoginScreenState extends State<LoginScreen> {
           globalRegisteredStudents.clear();
           for(var s in (snap.value as List)) {
             if (s != null) {
-              globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+              var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
+              if (st.isValid) globalRegisteredStudents.add(st);
             }
           }
         }
@@ -2480,7 +2485,8 @@ class _LoginScreenState extends State<LoginScreen> {
         globalRegisteredStudents.clear();
         for(var s in (snap.value as List)) {
           if (s != null) {
-            globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
+              if (st.isValid) globalRegisteredStudents.add(st);
           }
         }
       }
