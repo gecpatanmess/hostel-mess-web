@@ -6383,7 +6383,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
   // --- TEMPORARY EDITING BLOCK START ---
   bool isEditingEnabled = false;
-  static const String _editPassword = "01234567899876543210";
+  static const String _editPassword = "asdfg lkjh zxcvb mn";
   Widget _buildExportRow({
     required VoidCallback onExcel,
     required VoidCallback onPdf,
