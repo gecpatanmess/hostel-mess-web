@@ -580,13 +580,27 @@ class RegisteredStudent {
     'pin': pin,
     'email': email,
   };
-  factory RegisteredStudent.fromJson(Map<String, dynamic> json) => RegisteredStudent(
-    json['name'],
-    json['roomNo'],
-    json['photoUrl'] ?? json['photo'],
-    json['pin'],
-    email: json['email'] ?? '',
-  );
+  factory RegisteredStudent.fromJson(Map<String, dynamic> json) {
+    String parseStr(dynamic val) {
+      if (val == null) return '';
+      String s = val.toString().trim();
+      if (s.toLowerCase() == 'null' || s.isEmpty) return '';
+      return s;
+    }
+    String? parseNullableStr(dynamic val) {
+      if (val == null) return null;
+      String s = val.toString().trim();
+      if (s.toLowerCase() == 'null' || s.isEmpty) return null;
+      return s;
+    }
+    return RegisteredStudent(
+      parseStr(json['name']),
+      parseStr(json['roomNo']),
+      parseNullableStr(json['photoUrl'] ?? json['photo']),
+      parseStr(json['pin']),
+      email: parseStr(json['email']),
+    );
+  }
 }
 
 Future<void> saveRegisteredStudents() async {
@@ -8643,11 +8657,6 @@ class AboutDevelopersScreen extends StatelessWidget {
             // Logo Image
             Image.asset('assets/mdhk_logo.png', width: 300),
             const SizedBox(height: 48),
-            // Footer
-            Text(
-              "Version 1.0.42",
-              style: TextStyle(color: Colors.blueGrey[500], fontSize: 14),
-            ),
           ],
         ),
       ),
@@ -8814,3 +8823,5 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
+
