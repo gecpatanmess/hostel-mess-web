@@ -1,9 +1,55 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:dio/dio.dart';
 import 'badge_helper.dart';
 
 class NotificationService {
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  static Future<void> saveToken() async {
+    try {
+      String? token = await _messaging.getToken();
+      if (token == null) return;
+      print("FCM Token: $token");
+
+      final prefs = await SharedPreferences.getInstance();
+      final userType = prefs.getString('userType');
+      final identifier = prefs.getString('identifier');
+
+      if (userType == 'student' && identifier != null) {
+        final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+        if (snap.exists && snap.value != null) {
+          if (snap.value is List) {
+            List students = snap.value as List;
+            for (int i = 0; i < students.length; i++) {
+              if (students[i] != null && students[i] is Map && students[i]['name'] == identifier) {
+                await FirebaseDatabase.instance.ref('hostelData/students/$i/fcmToken').set(token);
+                print("Saved FCM token for student $identifier");
+                break;
+              }
+            }
+          } else if (snap.value is Map) {
+            Map students = snap.value as Map;
+            for (var key in students.keys) {
+              if (students[key] != null && students[key] is Map && students[key]['name'] == identifier) {
+                await FirebaseDatabase.instance.ref('hostelData/students/$key/fcmToken').set(token);
+                print("Saved FCM token for student $identifier");
+                break;
+              }
+            }
+          }
+        }
+      } else if (userType == 'admin' && identifier != null) {
+        String safePhone = identifier.replaceAll(RegExp(r'[.#$\[\]]'), '');
+        await FirebaseDatabase.instance.ref('hostelData/admin/fcmTokens/$safePhone').set(token);
+        print("Saved FCM token for admin $identifier");
+      }
+    } catch (e) {
+      print("Error saving FCM token: $e");
+    }
+  }
 
   static Future<void> init() async {
     try {
@@ -21,9 +67,8 @@ class NotificationService {
       print('User granted permission: ${settings.authorizationStatus}');
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        // Get FCM Token
-        String? token = await _messaging.getToken();
-        print("FCM Token: $token");
+        // Save FCM Token
+        await saveToken();
         
         // Listen for foreground messages
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -46,6 +91,125 @@ class NotificationService {
   static void clearAppBadge() {
     if (kIsWeb) {
       clearAppBadgeHelper();
+    }
+  }
+
+  static Future<void> sendPushNotificationToStudents(String title, String body) async {
+    try {
+      // 1. Get all student tokens
+      List<String> tokens = [];
+      final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+      if (snap.exists && snap.value != null) {
+        if (snap.value is List) {
+          for (var s in (snap.value as List)) {
+            if (s != null && s is Map && s['fcmToken'] != null) {
+              tokens.add(s['fcmToken'].toString());
+            }
+          }
+        } else if (snap.value is Map) {
+          Map students = snap.value as Map;
+          for (var key in students.keys) {
+            if (students[key] != null && students[key] is Map && students[key]['fcmToken'] != null) {
+              tokens.add(students[key]['fcmToken'].toString());
+            }
+          }
+        }
+      }
+
+      if (tokens.isEmpty) {
+        print("No student tokens found.");
+        return;
+      }
+
+      // 2. Call our Node.js backend to send the notification
+      final dio = Dio();
+      final response = await dio.post(
+        'https://gecpatan-mess.onrender.com/send-notification',
+        data: {
+          'title': title,
+          'body': body,
+          'tokens': tokens,
+        },
+      );
+      print("Notification sent successfully: \${response.data}");
+    } catch (e) {
+      print("Error sending notification: \$e");
+    }
+  }
+
+  static Future<void> sendPushNotificationToAdmins(String title, String body) async {
+    try {
+      // 1. Get all admin tokens
+      List<String> tokens = [];
+      final snap = await FirebaseDatabase.instance.ref('hostelData/admin/fcmTokens').get();
+      if (snap.exists && snap.value != null && snap.value is Map) {
+        Map admins = snap.value as Map;
+        for (var key in admins.keys) {
+          if (admins[key] != null) {
+            tokens.add(admins[key].toString());
+          }
+        }
+      }
+
+      if (tokens.isEmpty) {
+        print("No admin tokens found.");
+        return;
+      }
+
+      // 2. Call our Node.js backend to send the notification
+      final dio = Dio();
+      final response = await dio.post(
+        'https://gecpatan-mess.onrender.com/send-notification',
+        data: {
+          'title': title,
+          'body': body,
+          'tokens': tokens,
+        },
+      );
+      print("Admin Notification sent successfully: \${response.data}");
+    } catch (e) {
+      print("Error sending admin notification: \$e");
+    }
+  }
+
+  static Future<void> sendPushNotificationToSpecificStudents(List<String> studentNames, String title, String body) async {
+    try {
+      List<String> tokens = [];
+      final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+      if (snap.exists && snap.value != null) {
+        if (snap.value is List) {
+          for (var s in (snap.value as List)) {
+            if (s != null && s is Map && s['fcmToken'] != null && studentNames.contains(s['name'])) {
+              tokens.add(s['fcmToken'].toString());
+            }
+          }
+        } else if (snap.value is Map) {
+          Map students = snap.value as Map;
+          for (var key in students.keys) {
+            if (students[key] != null && students[key] is Map && students[key]['fcmToken'] != null && studentNames.contains(students[key]['name'])) {
+              tokens.add(students[key]['fcmToken'].toString());
+            }
+          }
+        }
+      }
+
+      if (tokens.isEmpty) {
+        print("No tokens found for the specified students.");
+        return;
+      }
+
+      final dio = Dio();
+      final response = await dio.post(
+        'https://gecpatan-mess.onrender.com/send-notification',
+        data: {
+          'title': title,
+          'body': body,
+          'tokens': tokens,
+        },
+      );
+      print("Specific Student Notification sent successfully: \${response.data}");
+    } catch (e) {
+      print("Error sending specific student notification: \$e");
     }
   }
 }

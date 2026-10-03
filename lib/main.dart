@@ -2376,6 +2376,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('identifier', typedName);
     await prefs.setString('photoPath', studentPhotoUrl ?? '');
     await prefs.setString('extraInfo', selectedRoom!);
+    await NotificationService.saveToken();
 
     Navigator.pushReplacement(
       context,
@@ -2453,6 +2454,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString('identifier', admin.phone);
           await prefs.setString('photoPath', adminPhotoUrl ?? '');
           await prefs.setString('extraInfo', _adminNameController.text);
+          await NotificationService.saveToken();
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
@@ -4759,6 +4761,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                         ),
                         const Spacer(),
+                        if (dues.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.notifications_active, color: Colors.redAccent),
+                            tooltip: "Send Reminders",
+                            onPressed: () {
+                              List<String> names = dues.map((d) => (d['student'] as RegisteredStudent).name).toList();
+                              NotificationService.sendPushNotificationToSpecificStudents(
+                                names,
+                                "Pending Mess Bill",
+                                "Please pay your pending mess bill for ${dues[0]['monthName']} ${dues[0]['year']}."
+                              );
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Reminders sent!")));
+                            },
+                          ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
@@ -4982,6 +4998,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   );
                 });
                 await SyncService.pushNotices();
+                NotificationService.sendPushNotificationToStudents(titleCtrl.text, msgCtrl.text);
                 Navigator.pop(context);
               }
             },
@@ -5149,6 +5166,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       'lunch': luCtrl.text.trim(),
                       'dinner': dnCtrl.text.trim(),
                     });
+                    
+                    NotificationService.sendPushNotificationToStudents(
+                      "Today's Mess Menu is here!",
+                      "Breakfast: ${bfCtrl.text.trim()}\nLunch: ${luCtrl.text.trim()}\nDinner: ${dnCtrl.text.trim()}"
+                    );
+
                     globalSyncTrigger.notifyListeners();
                     if (mounted) {
                       Navigator.pop(context);
@@ -5264,6 +5287,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     
                     Navigator.pop(context);
                     await SyncService.createDynamicPoll(poll);
+                    NotificationService.sendPushNotificationToStudents(
+                      "New Poll: ${poll.question}",
+                      "Open the app to cast your vote."
+                    );
                     setState((){});
                   },
                   child: const Text('Create'),
@@ -5362,6 +5389,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   onChanged: (v) async {
                     setState(() => globalEntryL = v);
                     await SyncService.pushSwitchesNow();
+                    if (v == true) {
+                      NotificationService.sendPushNotificationToStudents("Lunch Time", "Mess Open");
+                    }
                     if (v == false) {
                       _closeMessAndMarkAbsent('l');
                     }
@@ -5374,6 +5404,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   onChanged: (v) async {
                     setState(() => globalEntryD = v);
                     await SyncService.pushSwitchesNow();
+                    if (v == true) {
+                      NotificationService.sendPushNotificationToStudents("Dinner Time", "Mess Open");
+                    }
                     if (v == false) {
                       _closeMessAndMarkAbsent('d');
                     }
@@ -5791,6 +5824,10 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                     );
                   });
                   await SyncService.pushComplaints();
+                  NotificationService.sendPushNotificationToAdmins(
+                    "New Complaint: ${titleCtrl.text}",
+                    "${widget.name} (${widget.roomNo}) has submitted a complaint."
+                  );
                   Navigator.pop(context);
                 }
               },
