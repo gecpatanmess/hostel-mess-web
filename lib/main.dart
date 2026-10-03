@@ -8846,7 +8846,6 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                                           const SizedBox(height: 10),
                                           TextField(
                                             autofocus: true,
-                                            obscureText: true,
                                             onChanged: (val) {
                                               setState(() {
                                                 deleteText = val;
