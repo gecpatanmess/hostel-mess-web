@@ -2,19 +2,28 @@ import 'dart:io';
 
 void main() {
   var file = File('lib/main.dart');
-  var lines = file.readAsLinesSync();
-  
-  if (lines[2856].trim() == ')') {
-      lines[2856] = lines[2856] + ',';
-  }
-  
-  if (lines[2859].trim() == '),') {
-      lines[2859] = '';
-  }
-  
-  if (lines[2931].contains(');// ---')) {
-      lines[2931] = lines[2931].replaceAll(');// ---', ');\n// ---');
+  var code = file.readAsStringSync();
+
+  // Add isValid getter to RegisteredStudent
+  if (!code.contains('bool get isValid')) {
+    code = code.replaceAll(
+      'email: parseStr(json[' + "'email'" + ']),\n    );\n  }',
+      'email: parseStr(json[' + "'email'" + ']),\n    );\n  }\n  bool get isValid => name.isNotEmpty && roomNo.isNotEmpty;'
+    );
   }
 
-  file.writeAsStringSync(lines.join('\n'));
+  // Update line 1078 (approximately)
+  code = code.replaceAll(
+    'globalRegisteredStudents = studentStrs.map((s) => RegisteredStudent.fromJson(jsonDecode(s))).toList();',
+    'globalRegisteredStudents = studentStrs.map((s) => RegisteredStudent.fromJson(jsonDecode(s))).where((s) => s.isValid).toList();'
+  );
+
+  // Update .add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)))
+  code = code.replaceAll(
+    'globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));',
+    'var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));\n              if (st.isValid) globalRegisteredStudents.add(st);'
+  );
+
+  file.writeAsStringSync(code);
+  print('Done!');
 }

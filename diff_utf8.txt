@@ -1,0 +1,1270 @@
+﻿diff --git a/lib/main.dart b/lib/main.dart
+index ef66230..1f98f62 100644
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -187,7 +187,7 @@ class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
+                 DropdownMenuItem(value: 6, child: Text("Saturday (શનિવાર)")),
+                 DropdownMenuItem(value: 7, child: Text("Sunday (રવિવાર)")),
+               ],
+-              onChanged: (val) {
++              onChanged: (val) async {
+                 if (val != null) {
+                   setState(() { _selectedDay = val; });
+                   _loadDayMenu();
+@@ -667,314 +667,6 @@ class DailyRecord {
+ Map<String, DailyRecord> globalAttendanceMap = {};
+ Map<String, int> globalMonthlyPaid = {};
+ List<String> hiddenComplaints = [];
+-// ===== SAMPLE DATA FOR TESTING (REMOVE LATER) =====
+-bool _sampleDataLoaded = false;
+-void loadSampleAttendanceData(String roomNo, String name) {
+-  if (!_sampleDataLoaded) {
+-    _sampleDataLoaded = true;
+-    // _loadFakeStudents();
+-  }
+-  Map<String, List<String>> sampleDays = {
+-    '2026-9-1': ['P', 'P'], // Full day = 140
+-    '2026-9-2': ['P', 'A'], // Skipped dinner = 70
+-    '2026-9-3': ['P', 'P'], // Full day = 140
+-    '2026-9-4': ['P', 'P'], // Full day = 140
+-    '2026-9-5': ['P', 'P'], // Full day = 140
+-    '2026-9-6': ['P', 'P'], // Full day = 140
+-    '2026-9-7': ['P', 'P'], // Full day = 140
+-    '2026-9-8': ['P', 'P'], // Full day = 140
+-    '2026-9-9': ['P', 'P'], // Full day = 140
+-    '2026-9-10': ['P', 'P'], // Full day = 140
+-    '2026-9-11': ['P', 'A'], // Skipped dinner = 70
+-    '2026-9-12': ['P', 'P'], // Full day = 140
+-    '2026-9-13': ['P', 'P'], // Full day = 140
+-    '2026-9-14': ['A', 'A'], // Absent full day = 0
+-    '2026-9-15': ['P', 'P'], // Full day = 140
+-    '2026-9-16': ['P', 'P'], // Full day = 140
+-    '2026-9-17': ['P', 'P'], // Full day = 140
+-    '2026-9-18': ['P', 'P'], // Full day = 140
+-    '2026-9-19': ['P', 'P'], // Full day = 140
+-    '2026-9-20': ['A', 'P'], // Skipped lunch = 70
+-    '2026-9-21': ['P', 'P'], // Full day = 140
+-    '2026-9-22': ['P', 'P'], // Full day = 140
+-    '2026-9-23': ['P', 'P'], // Full day = 140
+-    '2026-9-24': ['P', 'P'], // Full day = 140
+-    '2026-9-25': ['P', 'P'], // Full day = 140
+-  };
+-  sampleDays.forEach((date, meals) {
+-    String key = "${date}_${roomNo}_${name}";
+-    DailyRecord rec = DailyRecord();
+-    rec.l = meals[0];
+-    rec.d = meals[1];
+-    globalAttendanceMap[key] = rec;
+-  });
+-}
+-
+-void _loadFakeStudents() {
+-  String? dummyPhoto = null;
+-
+-  Map<String, List<String>> realStudents = {
+-    '101': [
+-      'Thakore Yashrajsinh Amitkumar',
+-      'Chaudhary Prins Dineshbhai',
+-      'Shingala Dharm Maheshbhai',
+-      'Aakash Kumar',
+-    ],
+-    '102': [
+-      'Prajapati Daksh kumar Bhikhabhai',
+-      'Pawan Sharma',
+-      'Satyam Rambahadur Yadav',
+-      'Purvik Kantibhai Chaudhari',
+-    ],
+-    '103': [
+-      'Prajapati Rakeshkumar Vineshbhai',
+-      'Chaudhary Vijaybhai Meghrajbhai',
+-      'Mali Vipulbhai Dineshbhai',
+-      'Shubham Kumar Singh',
+-    ],
+-    '104': [
+-      'Chetariya Janak Bhikhubhai',
+-      'Dhruvkumar Hasubhai Parmar',
+-      'Chaudhary Bharat Kanjibhai',
+-      'Rathod Dixitkumar Rameshbhai',
+-    ],
+-    '105': [
+-      'Chauhan Jay Bharatbhai',
+-      'Pipaliya Yash Rameshbhai',
+-      'Param Rupeshkumar Bariya',
+-      'Radadiya Neel Prafulbhai',
+-    ],
+-    '106': [
+-      'Choudhary Shivam Anandmohan',
+-      'Aryan Singh',
+-      'Pratik Roshan Patra',
+-      'Manish N Jha',
+-    ],
+-    '107': [
+-      'Gauravbhai Jayantibhai Makwana',
+-      'Kamlesh Govindbhai Pamak',
+-      'Dhruv Chandrakant Anjani',
+-      'Bhavesh Umesh Kandpal',
+-    ],
+-    '108': [
+-      'Malaviya Bhavik',
+-      'Rathod Manish Babulal',
+-      'Kushwaha Riteshkumar Harendra',
+-      'Mandal Anmol Ramlal',
+-    ],
+-    '109': [
+-      'Zala Omdevsinh Sanjaysinh',
+-      'Zala Yashpalsinh',
+-      'Tadvi Mihirkumar',
+-      'Patel Kishan Vinodkumar',
+-    ],
+-    '110': [
+-      'Parmar Mihir Dineshbhai',
+-      'Prajapati Kunj Bharatbhai',
+-      'Patel Dax Bhaveshkumar',
+-      'Dhandhala Prafulkumar Pravinbhai',
+-    ],
+-    '111': [
+-      'Bijva Aryan Amarbhai',
+-      'Jadav Deven Maheshbhai',
+-      'Tarun Ganvit',
+-      'Pagi Devang Sanjaybhai',
+-    ],
+-    '112': [
+-      'Subhranshu Mishra',
+-      'Bhavik Kana Chavda',
+-      'Parth V Karavadra',
+-      'Pal Avanish Bhorik',
+-    ],
+-    '113': [
+-      'Upadhyay Vishesh Ajay',
+-      'Chaudhary Jayeshbhai Kamabhai',
+-      'Parmar Dhruvkumar Prabhatsinh',
+-      'Mayur Rajarambhai Machhi',
+-    ],
+-    '114': [
+-      'Akashbhai Dineshbhai Darji',
+-      'Bhautikbhai Virabhanbhai Chaudhary',
+-      'Chaudhary Jagrutbhai Nanjibhai',
+-      'Alpeshkumar Devabhai Chaudhari',
+-    ],
+-    '115': [
+-      'Sahilkumar Lalbacchan Yadav',
+-      'Kori Bablukumar Omprakash',
+-      'Stephen Jack Abraham Sunder',
+-      'Jha Rohankumar Vijaykumar',
+-    ],
+-    '116': [
+-      'Nayak Pranayakumar Sanatan',
+-      'Rawat Aditya Dhananjay',
+-      'Rathva Niranjankumar Nareshbhai',
+-      'Abhishek Singh',
+-    ],
+-    '117': [
+-      'Patel Yashraj Dinkar',
+-      'Singh Ayush Mukesh',
+-      'Baria Kalpeshkumar Jashubhai',
+-      'Golakiya Manav Kamleshbhai',
+-    ],
+-    '118': [
+-      'Suthar Darshan Sinh J.',
+-      'Patel Yug Dhirubhai',
+-      'Bumtariya Chaitany Satishbhai',
+-      'Singh Atul Anil',
+-    ],
+-    '119': [
+-      'Vignish Bhat',
+-      'Parmar Shubham Gopalbhai',
+-      'Vansh Pandita',
+-      'Rudra Yogeshkumar Dharva',
+-    ],
+-    '120': [
+-      'Amarkumar Yadav',
+-      'Chaudhari Jinay Shaileshbhai',
+-      'Pruthviraj Shivrambhai Vasava',
+-      'Maitrik Parmar',
+-    ],
+-    '201': [
+-      'Chaudhary Srawan Kumar',
+-      'Chaudhary Jitubhai Bhavabhai',
+-      'Yogeshbhai Parmar',
+-      'Adraniya Jigneshji Dasharathji',
+-    ],
+-    '202': [
+-      'Jehanraj Mittalkumar Chudasama',
+-      'Rehan Siddique',
+-      'Shreshthi Prafulkumar Vishwaratnaji',
+-      'Het Chetankumar Brahmbhatt',
+-    ],
+-    '203': [
+-      'Padvi Yashilbhai Shukarbhai',
+-      'Vyas Vashishth Mukeshbhai',
+-      'Luhar Sumit Vinodbhai',
+-      'Sudhanshu Kumar',
+-    ],
+-    '204': [
+-      'Bharadva Priyank Pravinbhai',
+-      'Hingora Arman Osmanbhai',
+-      'Agath Mihir Ranmal',
+-      'Prajapati Jaybhai Jayantibhai',
+-    ],
+-    '205': [
+-      'Jani Nikhil Sureshbhai',
+-      'Yash Soni',
+-      'Vishal Panchal',
+-      'Vansh Dhamecha',
+-    ],
+-    '206': [
+-      'Modi Purav Miteshbhai',
+-      'Sathvara Jaykumar Anil Bhai',
+-      'Maurya Abhinay Manoj',
+-      'Chaudhary Milan',
+-    ],
+-    '207': [
+-      'Dev Yogeshbhai Ahir',
+-      'Patel Krish Ketan',
+-      'Mehta Abhishek Hirenbhai',
+-      'Yadav Harsh Baljeetsingh',
+-    ],
+-    '208': [
+-      'Dhruv Narendrakumar Solanki',
+-      'Singh Niraj Tejnarayan',
+-      'Jadav Shyam Kalpesh',
+-      'Chaudhari Nirav Jayantikumar',
+-    ],
+-    '209': [
+-      'Krish Vijaybhai Unagar',
+-      'Charan Parth Satendra',
+-      'Prajapati Kalu Mansukhbhai',
+-      'Gohel Ved Vijaybhai',
+-    ],
+-    '210': [
+-      'Aditya Pruthvishkumar Brahmakshatriya',
+-      'Damor Utpalkumar Nareshbhai',
+-      'Kaklotar Harsh Shaileshbhai',
+-      'Baraiya Ishvar Rameshbhai',
+-    ],
+-    '211': [
+-      'Singh Yash Shashivendra',
+-      'Kasela Rushiraj Ashokbhai',
+-      'Rishu Singh',
+-      'Kavad Dhruvil Girdharbhai',
+-    ],
+-    '212': [
+-      'Chaudhary Dipak Prakash Bhai',
+-      'Hareshbhai Valabhai Asal',
+-      'Vasava Kaushikbhai Vipulbhai',
+-      'Harshit Kumavat',
+-    ],
+-    '213': [
+-      'Patel Shivoham Tirthram',
+-      'Varma Rahul Jagdishbhai',
+-      'Kamble Mohit Dharmesh',
+-      'Pray Vijaybhai Patel',
+-    ],
+-    '214': [
+-      'Ahir Dhaivatkumar Prakashbhai',
+-      'Vishvajit Sursinh Solanki',
+-      'Patel Prince Sanjaykumar',
+-      'Solanki Mayur Virajibhai',
+-    ],
+-    '215': [
+-      'Gaurav Raj',
+-      'Joshi Parv Kashyap',
+-      'Pawar Dakshdeep Jayesh',
+-      'Sharma Kaustuk Ratnesh',
+-    ],
+-    '216': [
+-      'Dheeraj Pandita',
+-      'Jigar Rajput',
+-      'Kavya Chaudhari',
+-      'Singh Aryan Rakesh',
+-    ],
+-    '217': [
+-      'Sharma Abhikumar Pankajkumar',
+-      'Patel Jainish Jayesh',
+-      'Rajkumar V. Telee',
+-      'Gelot Dilip Pareshkumar',
+-    ],
+-    '218': [
+-      'Solanki Sujalkumar Dasharathji',
+-      'Sasmiya Pareshbhai Kantibhai',
+-      'Ladumor Piyush Kalubhai',
+-      'Thakor Yuvrajsing Kamleshsing',
+-    ],
+-    '219': [
+-      'Satyam Manoj Yadav',
+-      'Chaudhari Yogeshkumar Vajeshibhai',
+-      'Krishkumar Laxmanbhai Chaudhari',
+-      'Joshi Ronak Rameshbhai',
+-    ],
+-    '220': [
+-      'Rudra Navinbhai Panchal',
+-      'Namra Durgeshchand Tripathi',
+-      'Fakir Shohebsha Badarsha',
+-      'Sukla Utkarsh Vipin',
+-    ],
+-  };
+-
+-  realStudents.forEach((room, names) {
+-    for (int idx = 0; idx < names.length; idx++) {
+-      String studentName = names[idx];
+-      if (!globalRegisteredStudents.any(
+-        (st) => st.name == studentName && st.roomNo == room,
+-      )) {
+-        globalRegisteredStudents.add(
+-          RegisteredStudent(studentName, room, dummyPhoto, ''),
+-        );
+-      }
+-
+-      int seed = studentName.hashCode;
+-
+-      // Generate strictly from Jan 2026 to Sep 2026
+-      // Fake data loop removed as per request
+-    }
+-  });
+-}
+-// ===== END SAMPLE DATA =====
+ 
+ File? globalMenuFile;
+ bool globalMenuIsPdf = false;
+@@ -1011,7 +703,6 @@ void main() async {
+     print("Firebase Init Error: $e");
+   }
+ 
+-  // _loadFakeStudents();
+   await _loadDataFromPrefs();
+   runApp(const MyApp());
+ }
+@@ -1148,28 +839,7 @@ class SyncService {
+     _pollCooldown = true;
+     try {
+       if (clear) {
+-        await _dbRef.child('polls').set({
+-          'L': [],
+-          'D': [],
+-        });
+-      } else {
+-        await _dbRef.child('polls').runTransaction((Object? post) {
+-          if (post == null) {
+-            return Transaction.success({
+-              'L': todayPollVotes['L']?.toList() ?? [],
+-              'D': todayPollVotes['D']?.toList() ?? [],
+-            });
+-          }
+-          Map<dynamic, dynamic> data = post as Map<dynamic, dynamic>;
+-          Set<String> lSet = Set<String>.from(data['L'] ?? []);
+-          Set<String> dSet = Set<String>.from(data['D'] ?? []);
+-          lSet.addAll(todayPollVotes['L'] ?? []);
+-          dSet.addAll(todayPollVotes['D'] ?? []);
+-          return Transaction.success({
+-            'L': lSet.toList(),
+-            'D': dSet.toList(),
+-          });
+-        });
++        await _dbRef.child('polls').remove();
+       }
+       globalSyncTrigger.value++;
+     } catch(e) {
+@@ -1180,6 +850,16 @@ class SyncService {
+     });
+   }
+ 
++  static Future<void> votePoll(String meal, String studentKey) async {
++    try {
++      String sanitizedKey = studentKey.replaceAll(RegExp(r'[.#$\[\]]'), '');
++      await _dbRef.child('polls').child(meal).child(sanitizedKey).set(true);
++      globalSyncTrigger.value++;
++    } catch(e) {
++      print("Vote poll error: $e");
++    }
++  }
++
+   /// Push only ONE attendance record to Firebase
+   static Future<void> pushAttendance(String key, DailyRecord rec) async {
+     try {
+@@ -1259,7 +939,6 @@ class SyncService {
+             }
+           }
+         }
+-        // _loadFakeStudents();
+       }
+ 
+       // 2. Fetch from Supabase
+@@ -1590,8 +1269,14 @@ class SyncService {
+         todayPollVotes['L']?.clear();
+         todayPollVotes['D']?.clear();
+         if (data['polls'] != null && !_pollCooldown) {
+-          todayPollVotes['L'] = Set<String>.from(data['polls']['L'] ?? []);
+-          todayPollVotes['D'] = Set<String>.from(data['polls']['D'] ?? []);
++          Set<String> parsePollVotes(dynamic votes) {
++            if (votes == null) return <String>{};
++            if (votes is List) return votes.where((e) => e != null).map((e) => e.toString()).toSet();
++            if (votes is Map) return votes.keys.map((e) => e.toString()).toSet();
++            return <String>{};
++          }
++          todayPollVotes['L'] = parsePollVotes(data['polls']['L']);
++          todayPollVotes['D'] = parsePollVotes(data['polls']['D']);
+         }
+         
+         if (data['menu'] != null) {
+@@ -1657,7 +1342,6 @@ class SyncService {
+             }
+           }
+         }
+-        // _loadFakeStudents();
+         
+         await saveRegisteredStudents();
+         final prefs = await SharedPreferences.getInstance();
+@@ -1930,7 +1614,7 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
+                         ),
+                       ),
+                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: brandDark),
+-                      onChanged: (val) {
++                      onChanged: (val) async {
+                         if (val.isNotEmpty && i < 5) {
+                           _otpFocusNodes[i + 1].requestFocus();
+                         } else if (val.isEmpty && i > 0) {
+@@ -2420,7 +2104,7 @@ class _LoginScreenState extends State<LoginScreen> {
+           actions: [
+             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+             ElevatedButton(
+-              onPressed: () {
++              onPressed: () async {
+                 if (newPassCtrl.text.length != 8) {
+                   ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Password must be exactly 8 characters")));
+                   return;
+@@ -2442,13 +2126,13 @@ class _LoginScreenState extends State<LoginScreen> {
+           var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name.toLowerCase() == savedStudentName!.toLowerCase());
+           existingStudent.pin = hashPassword(newPassCtrl.text);
+           await saveRegisteredStudents();
+-          SyncService.pushStudents();
++          await SyncService.pushStudents();
+         } else {
+           var admin = globalAdmins.firstWhere((a) => a.phone == savedAdminPhone);
+           admin.pin = hashPassword(newPassCtrl.text);
+           final prefs = await SharedPreferences.getInstance();
+           await prefs.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
+-          SyncService.pushAdmins();
++          await SyncService.pushAdmins();
+         }
+         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password reset successfully!"), backgroundColor: Colors.green));
+       }
+@@ -2577,7 +2261,7 @@ class _LoginScreenState extends State<LoginScreen> {
+         studentPhotoUrl = existingStudent.photoUrl; // Use existing photo unconditionally
+       }
+       await saveRegisteredStudents();
+-      SyncService.pushStudents();
++      await SyncService.pushStudents();
+     } else {
+       if (studentPhotoUrl == null) {
+         ScaffoldMessenger.of(context).showSnackBar(
+@@ -2615,7 +2299,7 @@ class _LoginScreenState extends State<LoginScreen> {
+         RegisteredStudent(typedName, selectedRoom!, studentPhotoUrl, hashedTypedPin, email: _studentEmailController.text.trim()),
+       );
+       await saveRegisteredStudents();
+-      SyncService.pushStudents();
++      await SyncService.pushStudents();
+     }
+ 
+     final prefs = await SharedPreferences.getInstance();
+@@ -2692,7 +2376,7 @@ class _LoginScreenState extends State<LoginScreen> {
+             admin.pin = hashPassword(pin);
+             final p = await SharedPreferences.getInstance();
+             await p.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
+-            SyncService.pushAdmins();
++            await SyncService.pushAdmins();
+           }
+           // Success
+           final prefs = await SharedPreferences.getInstance();
+@@ -3102,7 +2786,7 @@ class _LoginScreenState extends State<LoginScreen> {
+                                 ),
+                               )
+                               .toList(),
+-                                        onChanged: (val) {
++                                        onChanged: (val) async {
+                       setState(() {
+                         selectedStudentName = val;
+                         if (val != null && selectedRoom != null) {
+@@ -3787,7 +3471,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+     globalSyncTrigger.addListener(_onSync);
+     // Auto-refresh when dashboard opens
+     WidgetsBinding.instance.addPostFrameCallback((_) async {
+-      SyncService.fetchNow();
++      await SyncService.fetchNow();
+       if (mounted) setState(() { _isFetchingData = true; });
+       DateTime now = DateTime.now();
+       for (int m = 1; m <= now.month; m++) {
+@@ -3886,16 +3570,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+                           text: "Swipe for Lunch",
+                           onConfirm: () {
+                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.l = 'P'; _lunchMsgVisible = true; });
+-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
++                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                             _lunchMsgTimer?.cancel();
+                             _lunchMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _lunchMsgVisible = false); });
+                             Navigator.push(context, MaterialPageRoute(builder: (_) => MealPassScreen(mealName: 'Lunch', photoUrl: widget.photoUrl, name: widget.name, roomNo: widget.roomNo)));
+                           },
+                         ),
+                         TextButton.icon(
+-                          onPressed: () {
++                          onPressed: () async {
+                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.l = 'A'; _lunchMsgVisible = true; });
+-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
++                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                             _lunchMsgTimer?.cancel();
+                             _lunchMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _lunchMsgVisible = false); });
+                           },
+@@ -3931,16 +3615,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+                           text: "Swipe for Dinner",
+                           onConfirm: () {
+                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.d = 'P'; _dinnerMsgVisible = true; });
+-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
++                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                             _dinnerMsgTimer?.cancel();
+                             _dinnerMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _dinnerMsgVisible = false); });
+                             Navigator.push(context, MaterialPageRoute(builder: (_) => MealPassScreen(mealName: 'Dinner', photoUrl: widget.photoUrl, name: widget.name, roomNo: widget.roomNo)));
+                           },
+                         ),
+                         TextButton.icon(
+-                          onPressed: () {
++                          onPressed: () async {
+                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.d = 'A'; _dinnerMsgVisible = true; });
+-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
++                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                             _dinnerMsgTimer?.cancel();
+                             _dinnerMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _dinnerMsgVisible = false); });
+                           },
+@@ -4119,7 +3803,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+             SizedBox(
+               width: double.infinity,
+               child: ElevatedButton.icon(
+-                onPressed: () {
++                onPressed: () async {
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => StudentAttendanceScreen(name: widget.name, roomNo: widget.roomNo)));
+                 },
+                 icon: const Icon(Icons.list_alt, color: Colors.white),
+@@ -4139,14 +3823,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+ 
+   Widget _buildPollCard() {
+     String studentKey = "${widget.roomNo}_${widget.name}";
++    String sanitizedKey = studentKey.replaceAll(RegExp(r'[.#$\[\]]'), '');
+ 
+-    bool votedL = todayPollVotes['L']!.contains(studentKey);
+-    bool votedD = todayPollVotes['D']!.contains(studentKey);
++    bool votedL = todayPollVotes['L']!.contains(studentKey) || todayPollVotes['L']!.contains(sanitizedKey);
++    bool votedD = todayPollVotes['D']!.contains(studentKey) || todayPollVotes['D']!.contains(sanitizedKey);
+ 
+-    bool canVoteL = globalPollL && !votedL;
+-    bool canVoteD = globalPollD && !votedD;
+-
+-    bool hasPendingVote = canVoteL || canVoteD;
++    bool hasVoted = votedL || votedD;
+ 
+     return Card(
+       color: Colors.white,
+@@ -4185,92 +3867,141 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+                   ),
+                 ),
+               )
++            else if (hasVoted)
++              Container(
++                padding: const EdgeInsets.all(20),
++                decoration: BoxDecoration(
++                  color: Colors.green.withOpacity(0.1),
++                  borderRadius: BorderRadius.circular(12),
++                  border: Border.all(color: Colors.green.withOpacity(0.3)),
++                ),
++                child: const Row(
++                  mainAxisAlignment: MainAxisAlignment.center,
++                  children: [
++                    Icon(Icons.check_circle, color: Colors.green, size: 32),
++                    SizedBox(width: 12),
++                    Text(
++                      "Thanks for voting!",
++                      style: TextStyle(
++                        color: Colors.green,
++                        fontWeight: FontWeight.bold,
++                        fontSize: 20,
++                      ),
++                    ),
++                  ],
++                ),
++              )
+             else ...[
+               if (globalPollL)
+-                _buildPollOption(
+-                  "Lunch",
+-                  canVoteL,
+-                  _pollCheckL,
+-                  (v) => setState(() => _pollCheckL = v!),
++                GestureDetector(
++                  onTap: () => setState(() => _pollCheckL = !_pollCheckL),
++                  child: Container(
++                    margin: const EdgeInsets.only(bottom: 12),
++                    padding: const EdgeInsets.all(20),
++                    decoration: BoxDecoration(
++                      color: _pollCheckL ? brandOrange : Colors.white,
++                      borderRadius: BorderRadius.circular(16),
++                      border: Border.all(color: _pollCheckL ? brandOrange : brandOrange.withOpacity(0.3), width: 2),
++                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))],
++                    ),
++                    child: Row(
++                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
++                      children: [
++                        Text(
++                          "Lunch",
++                          style: TextStyle(
++                            fontSize: 20,
++                            fontWeight: FontWeight.bold,
++                            color: _pollCheckL ? Colors.white : brandDark,
++                          ),
++                        ),
++                        if (_pollCheckL)
++                          const Icon(Icons.check_circle, color: Colors.white, size: 28)
++                        else
++                          Icon(Icons.circle_outlined, color: brandGray.withOpacity(0.5), size: 28),
++                      ],
++                    ),
++                  ),
+                 ),
+               if (globalPollD)
+-                _buildPollOption(
+-                  "Dinner",
+-                  canVoteD,
+-                  _pollCheckD,
+-                  (v) => setState(() => _pollCheckD = v!),
++                GestureDetector(
++                  onTap: () => setState(() => _pollCheckD = !_pollCheckD),
++                  child: Container(
++                    margin: const EdgeInsets.only(bottom: 12),
++                    padding: const EdgeInsets.all(20),
++                    decoration: BoxDecoration(
++                      color: _pollCheckD ? brandOrange : Colors.white,
++                      borderRadius: BorderRadius.circular(16),
++                      border: Border.all(color: _pollCheckD ? brandOrange : brandOrange.withOpacity(0.3), width: 2),
++                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))],
++                    ),
++                    child: Row(
++                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
++                      children: [
++                        Text(
++                          "Dinner",
++                          style: TextStyle(
++                            fontSize: 20,
++                            fontWeight: FontWeight.bold,
++                            color: _pollCheckD ? Colors.white : brandDark,
++                          ),
++                        ),
++                        if (_pollCheckD)
++                          const Icon(Icons.check_circle, color: Colors.white, size: 28)
++                        else
++                          Icon(Icons.circle_outlined, color: brandGray.withOpacity(0.5), size: 28),
++                      ],
++                    ),
++                  ),
+                 ),
+ 
+-              if (hasPendingVote) ...[
+-                const SizedBox(height: 16),
+-                SizedBox(
+-                  width: double.infinity,
+-                  child: ElevatedButton(
+-                    onPressed: () {
+-                      if (!_pollCheckL && !_pollCheckD) {
+-                        ScaffoldMessenger.of(context).showSnackBar(
+-                          const SnackBar(
+-                            content: Text('Please select at least one meal!'),
+-                            backgroundColor: Colors.redAccent,
+-                          ),
+-                        );
+-                        return;
+-                      }
+-                      setState(() {
+-                        if (_pollCheckL) todayPollVotes['L']!.add(studentKey);
+-                        if (_pollCheckD) todayPollVotes['D']!.add(studentKey);
+-                        _pollCheckL = false;
+-                        _pollCheckD = false;
+-                      });
+-                      SyncService.pushPollsNow();
++              const SizedBox(height: 16),
++              SizedBox(
++                width: double.infinity,
++                child: ElevatedButton(
++                  onPressed: () async {
++                    if (!_pollCheckL && !_pollCheckD) {
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         const SnackBar(
+-                          content: Text('Poll Submitted Successfully!'),
+-                          backgroundColor: Colors.green,
++                          content: Text('Please select at least one meal!'),
++                          backgroundColor: Colors.redAccent,
+                         ),
+                       );
+-                    },
+-                    style: ElevatedButton.styleFrom(
+-                      backgroundColor: brandOrange,
+-                      padding: const EdgeInsets.symmetric(vertical: 14),
+-                      shape: RoundedRectangleBorder(
+-                        borderRadius: BorderRadius.circular(12),
+-                      ),
+-                    ),
+-                    child: const Text(
+-                      "Submit Vote",
+-                      style: TextStyle(
+-                        fontSize: 16,
+-                        fontWeight: FontWeight.bold,
+-                        color: Colors.white,
++                      return;
++                    }
++                    if (_pollCheckL) {
++                      todayPollVotes['L']!.add(sanitizedKey);
++                      await SyncService.votePoll('L', sanitizedKey);
++                    }
++                    if (_pollCheckD) {
++                      todayPollVotes['D']!.add(sanitizedKey);
++                      await SyncService.votePoll('D', sanitizedKey);
++                    }
++                    setState(() {});
++                    ScaffoldMessenger.of(context).showSnackBar(
++                      const SnackBar(
++                        content: Text('Poll Submitted Successfully!'),
++                        backgroundColor: Colors.green,
+                       ),
++                    );
++                  },
++                  style: ElevatedButton.styleFrom(
++                    backgroundColor: brandOrange,
++                    padding: const EdgeInsets.symmetric(vertical: 16),
++                    shape: RoundedRectangleBorder(
++                      borderRadius: BorderRadius.circular(12),
+                     ),
+                   ),
+-                ),
+-              ] else ...[
+-                const SizedBox(height: 16),
+-                Container(
+-                  padding: const EdgeInsets.all(12),
+-                  decoration: BoxDecoration(
+-                    color: Colors.green.withOpacity(0.1),
+-                    borderRadius: BorderRadius.circular(8),
+-                  ),
+-                  child: const Row(
+-                    mainAxisAlignment: MainAxisAlignment.center,
+-                    children: [
+-                      Icon(Icons.check_circle, color: Colors.green),
+-                      SizedBox(width: 8),
+-                      Text(
+-                        "Thanks for voting!",
+-                        style: TextStyle(
+-                          color: Colors.green,
+-                          fontWeight: FontWeight.bold,
+-                        ),
+-                      ),
+-                    ],
++                  child: const Text(
++                    "Submit Vote",
++                    style: TextStyle(
++                      fontSize: 18,
++                      fontWeight: FontWeight.bold,
++                      color: Colors.white,
++                    ),
+                   ),
+                 ),
+-              ],
++              ),
+             ],
+           ],
+         ),
+@@ -4381,8 +4112,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+           IconButton(
+             icon: const Icon(Icons.refresh, color: Colors.white),
+             tooltip: 'Refresh',
+-            onPressed: () {
+-              SyncService.fetchNow();
++            onPressed: () async {
++              await SyncService.fetchNow();
+             },
+           ),
+         ],
+@@ -4421,7 +4152,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+                 'My Attendance',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 Navigator.push(
+                   context,
+@@ -4440,7 +4171,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+                 'Long Leave',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 Navigator.push(
+                   context,
+@@ -4454,7 +4185,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+                 'Mess Complaints',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 Navigator.push(
+                   context,
+@@ -4482,7 +4213,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
+ 
+               ),
+ 
+-              onTap: () {
++              onTap: () async {
+ 
+                 Navigator.pop(context);
+ 
+@@ -4743,7 +4474,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+     globalSyncTrigger.addListener(_onSync);
+     // Auto-refresh when dashboard opens
+     WidgetsBinding.instance.addPostFrameCallback((_) async {
+-      SyncService.fetchNow();
++      await SyncService.fetchNow();
+       if (mounted) setState(() { _isFetchingData = true; });
+       DateTime now = DateTime.now();
+       for (int m = 1; m <= now.month; m++) {
+@@ -4881,7 +4612,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                   final prefs = await SharedPreferences.getInstance();
+                   List<String> adminStrings = globalAdmins.map((a) => jsonEncode(a.toJson())).toList();
+                   await prefs.setStringList('globalAdmins', adminStrings);
+-                  SyncService.pushAdmins();
++                  await SyncService.pushAdmins();
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Admin created successfully!"), backgroundColor: Colors.green));
+                   _newAdminMobileCtrl.clear();
+                   _newAdminPinCtrl.clear();
+@@ -4926,11 +4657,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                       ),
+                     ),
+                     TextButton.icon(
+-                      onPressed: () {
++                      onPressed: () async {
+                         setState(() {
+                           todayPollVotes = {'L': <String>{}, 'D': <String>{}};
+                         });
+-                        SyncService.pushPollsNow(clear: true);
++                        await SyncService.pushPollsNow(clear: true);
+                         ScaffoldMessenger.of(context).showSnackBar(
+                           const SnackBar(content: Text('Poll data cleared!')),
+                         );
+@@ -5165,9 +4896,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                         Icons.delete_outline,
+                         color: Colors.redAccent,
+                       ),
+-                      onPressed: () {
++                      onPressed: () async {
+                         setState(() {
+-                          SyncService.deleteNotice(notice.id);
++                          await SyncService.deleteNotice(notice.id);
+                         });
+                       },
+                     ),
+@@ -5237,7 +4968,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                 borderRadius: BorderRadius.circular(12),
+               ),
+             ),
+-            onPressed: () {
++            onPressed: () async {
+               if (titleCtrl.text.isNotEmpty && msgCtrl.text.isNotEmpty) {
+                 setState(() {
+                   globalNotices.insert(
+@@ -5250,7 +4981,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                     ),
+                   );
+                 });
+-                SyncService.pushNotices();
++                await SyncService.pushNotices();
+                 Navigator.pop(context);
+               }
+             },
+@@ -5293,7 +5024,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+         globalAttendanceMap[key]!.d = 'A';
+       }
+       // Push each record individually to Firebase
+-      SyncService.pushAttendance(key, globalAttendanceMap[key]!);
++      await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+     }
+   }
+ 
+@@ -5361,7 +5092,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                                 globalMenuIsPdf = file.extension?.toLowerCase() == 'pdf';
+                               });
+                               setState(() {});
+-                              SyncService.pushMenu();
++                              await SyncService.pushMenu();
+                             }
+                           }
+                         },
+@@ -5388,7 +5119,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                             Expanded(child: Text(globalMenuFile != null ? globalMenuFile!.path.split('/').last.split('\\').last : 'Uploaded Menu', maxLines: 2, overflow: TextOverflow.visible)),
+                             IconButton(
+                               icon: const Icon(Icons.delete, color: Colors.redAccent),
+-                              onPressed: () {
++                              onPressed: () async {
+                                 setDialogState(() {
+                                   globalMenuFile = null;
+                                   globalMenuUrl = null;
+@@ -5396,7 +5127,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                                   globalMenuIsPdf = false;
+                                 });
+                                 setState(() {});
+-                                SyncService.pushMenu();
++                                await SyncService.pushMenu();
+                               },
+                             ),
+                           ],
+@@ -5452,8 +5183,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+           IconButton(
+             icon: const Icon(Icons.refresh, color: Colors.white),
+             tooltip: 'Refresh',
+-            onPressed: () {
+-              SyncService.fetchNow();
++            onPressed: () async {
++              await SyncService.fetchNow();
+             },
+           ),
+         ],
+@@ -5517,9 +5248,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                   title: const Text('Lunch'),
+                   activeColor: brandOrange,
+                   value: globalEntryL,
+-                  onChanged: (v) {
++                  onChanged: (v) async {
+                     setState(() => globalEntryL = v);
+-                    SyncService.pushSwitchesNow();
++                    await SyncService.pushSwitchesNow();
+                     if (v == false) {
+                       _closeMessAndMarkAbsent('l');
+                     }
+@@ -5529,9 +5260,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                   title: const Text('Dinner'),
+                   activeColor: brandOrange,
+                   value: globalEntryD,
+-                  onChanged: (v) {
++                  onChanged: (v) async {
+                     setState(() => globalEntryD = v);
+-                    SyncService.pushSwitchesNow();
++                    await SyncService.pushSwitchesNow();
+                     if (v == false) {
+                       _closeMessAndMarkAbsent('d');
+                     }
+@@ -5551,7 +5282,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                   title: const Text('Lunch'),
+                   activeColor: brandOrange,
+                   value: globalPollL,
+-                  onChanged: (v) {
++                  onChanged: (v) async {
+                     setState(() {
+                       globalPollL = v;
+                       if (v) {
+@@ -5563,14 +5294,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                         }
+                       }
+                     });
+-                    SyncService.pushSwitchesNow();
++                    await SyncService.pushSwitchesNow();
+                   },
+                 ),
+                 SwitchListTile(
+                   title: const Text('Dinner'),
+                   activeColor: brandOrange,
+                   value: globalPollD,
+-                  onChanged: (v) {
++                  onChanged: (v) async {
+                     setState(() {
+                       globalPollD = v;
+                       if (v) {
+@@ -5582,7 +5313,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                         }
+                       }
+                     });
+-                    SyncService.pushSwitchesNow();
++                    await SyncService.pushSwitchesNow();
+                   },
+                 ),
+               ],
+@@ -5593,7 +5324,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                 'Attendance Sheet',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 Navigator.push(
+                   context,
+@@ -5609,7 +5340,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                 'View All Register Student',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 Navigator.push(
+                   context,
+@@ -5625,7 +5356,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                 'Set Menu (Today)',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 _showSetMenuDialog();
+               },
+@@ -5636,7 +5367,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                 'Edit Weekly Timetable',
+                 style: TextStyle(fontWeight: FontWeight.w500),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 showDialog(context: context, builder: (context) => const WeeklyMenuEditorWidget());
+               },
+@@ -5679,7 +5410,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                         ),
+                     ],
+                   ),
+-                  onTap: () {
++                  onTap: () async {
+                     Navigator.pop(context);
+                     setState(() {
+                       globalAdminLastViewedComplaints = DateTime.now();
+@@ -5690,7 +5421,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                         builder: (context) => AdminComplaintsScreen(
+                           hidden: globalAdminHiddenComplaints,
+                           onDelete: (id) {
+-                            SyncService.deleteComplaint(id);
++                            await SyncService.deleteComplaint(id);
+                           },
+                         ),
+                       ),
+@@ -5713,7 +5444,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+ 
+               ),
+ 
+-              onTap: () {
++              onTap: () async {
+ 
+                 Navigator.pop(context);
+ 
+@@ -5730,7 +5461,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+                 'Manage Students',
+                 style: TextStyle(fontWeight: FontWeight.w600),
+               ),
+-              onTap: () {
++              onTap: () async {
+                 Navigator.pop(context);
+                 Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageStudentsScreen()));
+               },
+@@ -5968,7 +5699,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
+                   borderRadius: BorderRadius.circular(12),
+                 ),
+               ),
+-              onPressed: () {
++              onPressed: () async {
+                 if (titleCtrl.text.isNotEmpty && msgCtrl.text.isNotEmpty) {
+                   setState(() {
+                     globalComplaints.insert(
+@@ -5985,7 +5716,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
+                       ),
+                     );
+                   });
+-                  SyncService.pushComplaints();
++                  await SyncService.pushComplaints();
+                   Navigator.pop(context);
+                 }
+               },
+@@ -6077,7 +5808,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
+                         Icons.delete_outline,
+                         color: Colors.redAccent,
+                       ),
+-                      onPressed: () {
++                      onPressed: () async {
+                         setState(() => globalStudentHiddenComplaints.add(c.id));
+                         saveStudentHiddenComplaints();
+                       },
+@@ -6210,7 +5941,7 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
+                         Icons.delete_outline,
+                         color: Colors.redAccent,
+                       ),
+-                      onPressed: () {
++                      onPressed: () async {
+                         widget.onDelete(c.id);
+                         setState(() {});
+                       },
+@@ -6704,7 +6435,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                           isObscured ? Icons.visibility_off : Icons.visibility,
+                           color: brandGray,
+                         ),
+-                        onPressed: () {
++                        onPressed: () async {
+                           setDialogState(() {
+                             isObscured = !isObscured;
+                           });
+@@ -6729,7 +6460,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                       borderRadius: BorderRadius.circular(12),
+                     ),
+                   ),
+-                  onPressed: () {
++                  onPressed: () async {
+                     if (passCtrl.text.trim() == _editPassword) {
+                       Navigator.pop(ctx);
+                       setState(() {
+@@ -6838,7 +6569,6 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+       await supa.from('complaints').delete().neq('id', 'dummy');
+       
+       globalRegisteredStudents.clear();
+-      _loadFakeStudents(); // Restores all 160 names as unregistered
+       globalAttendanceMap.clear();
+       globalMonthlyPaid.clear();
+       globalNotices.clear();
+@@ -6846,7 +6576,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+       todayPollVotes['L']?.clear();
+       todayPollVotes['D']?.clear();
+       
+-      SyncService.pushStudents();
++      await SyncService.pushStudents();
+       await dbRef.child('force_logout').set(DateTime.now().millisecondsSinceEpoch);
+       globalSyncTrigger.value++;
+       
+@@ -7154,20 +6884,20 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                 // --- TEMPORARY EDITING BLOCK START ---
+                 if (isEditingEnabled && !isEmpty) {
+                   return InkWell(
+-                    onTap: () {
++                    onTap: () async {
++                      String key =
++                          "${_selectedDailyDate.year}-${_selectedDailyDate.month}-${_selectedDailyDate.day}_${room}_${name}";
++                      DailyRecord rec =
++                          globalAttendanceMap[key] ?? DailyRecord();
+                       setState(() {
+-                        String key =
+-                            "${_selectedDailyDate.year}-${_selectedDailyDate.month}-${_selectedDailyDate.day}_${room}_${name}";
+-                        DailyRecord rec =
+-                            globalAttendanceMap[key] ?? DailyRecord();
+                         if (mealType == 'L') {
+                           rec.l = (rec.l == 'P') ? 'A' : 'P';
+                         } else {
+                           rec.d = (rec.d == 'P') ? 'A' : 'P';
+                         }
+                         globalAttendanceMap[key] = rec;
+-                        SyncService.pushAttendance(key, rec);
+                       });
++                      await SyncService.pushAttendance(key, rec);
+                     },
+                     child: Container(
+                       padding: const EdgeInsets.symmetric(vertical: 4),
+@@ -7531,8 +7261,8 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                                 // --- TEMPORARY EDITING BLOCK START ---
+                                 if (isEditingEnabled) {
+                                   return InkWell(
+-                                    onTap: () {
+-                                      setModalState(() {
++                                    onTap: () async {
++                                      setModalState(() async {
+                                         String key =
+                                             "${_selectedMonth.year}-${_selectedMonth.month}-${h['day']}_${student.roomNo}_${student.name}";
+                                         DailyRecord rec =
+@@ -7544,12 +7274,13 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                                           rec.d = (rec.d == 'P') ? 'A' : 'P';
+                                         }
+                                         globalAttendanceMap[key] = rec;
+-                                        SyncService.pushAttendance(key, rec);
++                                        await SyncService.pushAttendance(key, rec);
+ 
+                                         setState(
+                                           () {},
+                                         ); // trigger rebuild on parent for instant UI update
+                                       });
++
+                                     },
+                                     child: Container(
+                                       padding: const EdgeInsets.symmetric(
+@@ -8178,7 +7909,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                         child: Align(
+                           alignment: Alignment.center,
+                           child: InkWell(
+-                            onTap: () {
++                            onTap: () async {
+                               TextEditingController amtCtrl =
+                                   TextEditingController(
+                                     text: row['paid'].toString(),
+@@ -8209,14 +7940,14 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                                         child: const Text("Cancel"),
+                                       ),
+                                       ElevatedButton(
+-                                        onPressed: () {
++                                        onPressed: () async {
+                                           int? val = int.tryParse(amtCtrl.text);
+                                           if (val != null) {
+                                             setState(() {
+                                               globalMonthlyPaid[row['monthKey']] =
+                                                   val;
+                                             });
+-                                            SyncService.pushPaid();
++
+                                           }
+                                           Navigator.pop(ctx);
+                                         },
+@@ -8312,7 +8043,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
+                     Switch(
+                       value: isEditingEnabled,
+                       activeColor: Colors.white,
+-                      onChanged: (val) {
++                      onChanged: (val) async {
+                         if (val) {
+                           // Force rebuild so switch visually snaps back to OFF immediately
+                           setState(() {
+@@ -8754,7 +8485,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
+         actions: [
+           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+           ElevatedButton(
+-            onPressed: () {
++            onPressed: () async {
+               if (nameCtrl.text.isEmpty || roomCtrl.text.isEmpty) {
+                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name and Room No are required')));
+                 return;
+@@ -8767,7 +8498,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
+                   globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, student.pin, email: student.email);
+                 }
+               }
+-              SyncService.pushStudents();
++
+               Navigator.pop(ctx);
+             },
+             child: const Text('Save'),
+@@ -8830,7 +8561,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
+                         ),
+                         IconButton(
+                           icon: const Icon(Icons.delete, color: Colors.red),
+-                          onPressed: () {
++                          onPressed: () async {
+                             showDialog(
+                               context: context,
+                               builder: (dCtx) {
+@@ -8846,7 +8577,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
+                                           const SizedBox(height: 10),
+                                           TextField(
+                                             autofocus: true,
+-                                            onChanged: (val) {
++                                            onChanged: (val) async {
+                                               setState(() {
+                                                 deleteText = val;
+                                               });
+@@ -8860,9 +8591,9 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
+                                       actions: [
+                                         TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+                                         TextButton(
+-                                          onPressed: deleteText == 'DELETE' ? () {
++                                          onPressed: deleteText == 'DELETE' ? () async {
+                                             globalRegisteredStudents.remove(s);
+-                                            SyncService.pushStudents();
++
+                                             Navigator.pop(dCtx);
+                                           } : null, 
+                                           child: Text('Delete', style: TextStyle(color: deleteText == 'DELETE' ? Colors.red : Colors.grey)),
