@@ -896,7 +896,11 @@ class SyncService {
     }
   }
 
+  /// Firebase keys cannot contain . # $ [ ] /
+  static String pollSafeKey(String key) => key.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+
   static Future<void> voteDynamicPoll(String pollId, String studentKey, String option) async {
+    studentKey = pollSafeKey(studentKey);
     try {
       if (dynamicPolls[pollId] != null) {
         dynamicPolls[pollId]!.votes[studentKey] = option;
@@ -909,6 +913,7 @@ class SyncService {
   }
 
   static Future<void> removeVoteDynamicPoll(String pollId, String studentKey) async {
+    studentKey = pollSafeKey(studentKey);
     try {
       if (dynamicPolls[pollId] != null) {
         dynamicPolls[pollId]!.votes.remove(studentKey);
@@ -1184,7 +1189,9 @@ class SyncService {
     for(var a in globalAdmins) adminsList.add(a.toJson());
     data['admins'] = adminsList;
     
-    data['dynamic_polls'] = dynamicPolls.map((k, v) => MapEntry(k, v.toJson()));
+    // NOTE: dynamic_polls are NOT pushed here on purpose.
+    // They are written only via targeted updates (createDynamicPoll / voteDynamicPoll /
+    // removeVoteDynamicPoll / stopDynamicPoll) so concurrent votes never overwrite each other.
     
     // NOTICES, COMPLAINTS AND MENU ARE NOW IN SUPABASE ONLY.
     // We no longer push them to Firebase.
@@ -3853,17 +3860,17 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 
   Widget _buildDynamicPolls() {
-    String studentKey = "${widget.roomNo}_${widget.name}";
+    String studentKey = SyncService.pollSafeKey("${widget.roomNo}_${widget.name}");
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
     
     // Filter active polls
     final polls = SyncService.dynamicPolls.values.where((p) {
       final pollStart = DateTime.fromMillisecondsSinceEpoch(p.startTime);
       bool isToday = pollStart.year == now.year && pollStart.month == now.month && pollStart.day == now.day;
       return nowMs >= p.startTime && isToday;
-    }).toList();
+    }).toList()
+      ..sort((a, b) => b.startTime.compareTo(a.startTime));
     if (polls.isEmpty) {
       return Card(
         color: Colors.white,
@@ -3911,6 +3918,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   
                   return InkWell(
                     onTap: isLocked ? null : () async {
+                      if (DateTime.now().millisecondsSinceEpoch > p.endTime || !p.isActive) {
+                        setState(() {});
+                        return;
+                      }
                       if (amI) {
                         await SyncService.removeVoteDynamicPoll(p.id, studentKey);
                       } else {
@@ -5041,7 +5052,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _showCreatePollDialog() {
     final qCtrl = TextEditingController();
     TimeOfDay startTime = TimeOfDay.now();
-    TimeOfDay endTime = TimeOfDay(hour: startTime.hour + 2, minute: startTime.minute);
+    TimeOfDay endTime = TimeOfDay(hour: math.min(startTime.hour + 2, 23), minute: startTime.hour + 2 > 23 ? 59 : startTime.minute);
 
     showDialog(
       context: context,
@@ -5118,6 +5129,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     final now = DateTime.now();
                     final startDt = DateTime(now.year, now.month, now.day, startTime.hour, startTime.minute);
                     final endDt = DateTime(now.year, now.month, now.day, endTime.hour, endTime.minute);
+                    if (!endDt.isAfter(startDt)) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(
+                        content: Text("End time must be after Start time"),
+                        backgroundColor: Colors.red,
+                      ));
+                      return;
+                    }
                     
                     final poll = DynamicPoll(
                       id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -5260,12 +5278,25 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   title: const Text("➕ Create New Poll", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
                   onTap: _showCreatePollDialog,
                 ),
-                if (SyncService.dynamicPolls.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text("No active polls.", style: TextStyle(color: brandGray)),
-                  ),
-                ...SyncService.dynamicPolls.values.map((p) {
+                ...(() {
+                  final n = DateTime.now();
+                  final todays = SyncService.dynamicPolls.values.where((p) {
+                    final s = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+                    return s.year == n.year && s.month == n.month && s.day == n.day;
+                  }).toList()
+                    ..sort((a, b) => b.startTime.compareTo(a.startTime));
+                  if (todays.isEmpty) {
+                    return <Widget>[
+                      const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text("No polls today.", style: TextStyle(color: brandGray)),
+                      ),
+                    ];
+                  }
+                  return todays.map<Widget>((p) {
+                  final bool closed = !p.isActive || DateTime.now().millisecondsSinceEpoch > p.endTime;
+                  final String fmtStart = TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.startTime)).format(context);
+                  final String fmtEnd = TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.endTime)).format(context);
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Padding(
@@ -5274,10 +5305,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(p.question, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 2),
+                          Text("$fmtStart - $fmtEnd", style: const TextStyle(color: brandGray, fontSize: 12)),
+                          const SizedBox(height: 6),
+                          ...p.options.map((o) => Text(
+                                "$o: ${p.votes.values.where((v) => v == o).length}",
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              )),
                           Text("Total Votes: ${p.votes.length}"),
                           const SizedBox(height: 8),
-                          if (p.isActive)
+                          if (!closed)
                             Align(
                               alignment: Alignment.centerRight,
                               child: ElevatedButton(
@@ -5295,7 +5332,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                   );
-                }).toList(),
+                  }).toList();
+                })(),
               ],
             ),
             ListTile(
