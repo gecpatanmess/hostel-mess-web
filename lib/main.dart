@@ -896,6 +896,18 @@ class SyncService {
     }
   }
 
+  static Future<void> deleteDynamicPoll(String id) async {
+    try {
+      if (dynamicPolls.containsKey(id)) {
+        dynamicPolls.remove(id);
+        globalSyncTrigger.value++;
+      }
+      await _dbRef.child('dynamic_polls').child(id).remove();
+    } catch(e) {
+      print("Delete poll error: $e");
+    }
+  }
+
   /// Firebase keys cannot contain . # $ [ ] /
   static String pollSafeKey(String key) => key.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
 
@@ -4614,6 +4626,104 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        ...(() {
+          final allPolls = SyncService.dynamicPolls.values.toList()
+            ..sort((a, b) => b.startTime.compareTo(a.startTime));
+          if (allPolls.isEmpty) return <Widget>[const SizedBox.shrink()];
+          
+          return <Widget>[
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 8, top: 8),
+              child: Text("Live & Recent Polls", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark)),
+            ),
+            ...allPolls.map<Widget>((p) {
+              final bool closed = !p.isActive || DateTime.now().millisecondsSinceEpoch > p.endTime;
+              final String fmtStart = TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.startTime)).format(context);
+              final String fmtEnd = TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.endTime)).format(context);
+              final String dateStr = "${DateTime.fromMillisecondsSinceEpoch(p.startTime).day}/${DateTime.fromMillisecondsSinceEpoch(p.startTime).month}";
+              
+              return InkWell(
+                onLongPress: closed ? () {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text("Delete Poll?"),
+                      content: const Text("Are you sure you want to permanently delete this poll?"),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+                        TextButton(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            await SyncService.deleteDynamicPoll(p.id);
+                            setState(() {});
+                          },
+                          child: const Text("Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                        ),
+                      ]
+                    )
+                  );
+                } : null,
+                child: Card(
+                  color: Colors.white,
+                  margin: const EdgeInsets.symmetric(vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  elevation: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(child: Text(p.question, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                            if (closed)
+                              const Text("Closed", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                            else
+                              const Text("Live", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text("Date: $dateStr | Time: $fmtStart - $fmtEnd", style: const TextStyle(color: brandGray, fontSize: 12)),
+                        const SizedBox(height: 12),
+                        ...p.options.map((o) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            "$o: ${p.votes.values.where((v) => v == o).length} votes",
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        )),
+                        const SizedBox(height: 8),
+                        Text("Total Votes: ${p.votes.length}", style: const TextStyle(fontSize: 13, color: brandGray)),
+                        if (!closed) ...[
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                              onPressed: () async {
+                                await SyncService.stopDynamicPoll(p.id);
+                                setState(() {});
+                              },
+                              child: const Text("End Poll Now"),
+                            ),
+                          )
+                        ] else ...[
+                          const SizedBox(height: 8),
+                          const Align(
+                            alignment: Alignment.centerRight,
+                            child: Text("Long press to delete", style: TextStyle(fontSize: 11, color: brandGray, fontStyle: FontStyle.italic)),
+                          )
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+            const Divider(height: 32),
+          ];
+        })(),
 
         ...(() {
           var dues = _getPendingDues();
@@ -5266,75 +5376,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
               ],
             ),
-            ExpansionTile(
+            ListTile(
               leading: const Icon(Icons.poll, color: brandDark),
               title: const Text(
-                'Live Polls',
+                'Create New Poll',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.add, color: brandOrange),
-                  title: const Text("➕ Create New Poll", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
-                  onTap: _showCreatePollDialog,
-                ),
-                ...(() {
-                  final n = DateTime.now();
-                  final todays = SyncService.dynamicPolls.values.where((p) {
-                    final s = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-                    return s.year == n.year && s.month == n.month && s.day == n.day;
-                  }).toList()
-                    ..sort((a, b) => b.startTime.compareTo(a.startTime));
-                  if (todays.isEmpty) {
-                    return <Widget>[
-                      const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text("No polls today.", style: TextStyle(color: brandGray)),
-                      ),
-                    ];
-                  }
-                  return todays.map<Widget>((p) {
-                  final bool closed = !p.isActive || DateTime.now().millisecondsSinceEpoch > p.endTime;
-                  final String fmtStart = TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.startTime)).format(context);
-                  final String fmtEnd = TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.endTime)).format(context);
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(p.question, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 2),
-                          Text("$fmtStart - $fmtEnd", style: const TextStyle(color: brandGray, fontSize: 12)),
-                          const SizedBox(height: 6),
-                          ...p.options.map((o) => Text(
-                                "$o: ${p.votes.values.where((v) => v == o).length}",
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              )),
-                          Text("Total Votes: ${p.votes.length}"),
-                          const SizedBox(height: 8),
-                          if (!closed)
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                                onPressed: () async {
-                                  await SyncService.stopDynamicPoll(p.id);
-                                  setState(() {});
-                                },
-                                child: const Text("End Poll Now"),
-                              ),
-                            )
-                          else
-                            const Text("Closed", style: TextStyle(color: Colors.red)),
-                        ],
-                      ),
-                    ),
-                  );
-                  }).toList();
-                })(),
-              ],
+              onTap: () {
+                Navigator.pop(context);
+                _showCreatePollDialog();
+              },
             ),
             ListTile(
               leading: const Icon(Icons.fact_check, color: brandDark),
