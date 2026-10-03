@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'notification_service.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -642,22 +643,60 @@ void handleForceLogout() async {
 bool globalEntryL = false;
 bool globalEntryD = false;
 
-bool globalPollL = false;
-bool globalPollD = false;
-String globalPollDate =
-    "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
-void checkAndResetPoll() {
-  String todayStr =
-      "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
-  if (globalPollDate != todayStr) {
-    todayPollVotes = {'L': <String>{}, 'D': <String>{}};
-    globalPollL = false;
-    globalPollD = false;
-    globalPollDate = todayStr;
+class DynamicPoll {
+  String id;
+  String question;
+  List<String> options;
+  int startTime;
+  int endTime;
+  bool isActive;
+  Map<String, String> votes;
+
+  DynamicPoll({
+    required this.id,
+    required this.question,
+    required this.options,
+    required this.startTime,
+    required this.endTime,
+    required this.isActive,
+    required this.votes,
+  });
+
+  factory DynamicPoll.fromJson(Map<dynamic, dynamic> json, String id) {
+    Map<String, String> parsedVotes = {};
+    if (json['votes'] != null) {
+      (json['votes'] as Map).forEach((k, v) {
+        parsedVotes[k.toString()] = v.toString();
+      });
+    }
+    List<String> parsedOptions = [];
+    if (json['options'] != null) {
+      for (var o in (json['options'] as List)) {
+        parsedOptions.add(o.toString());
+      }
+    }
+    return DynamicPoll(
+      id: id,
+      question: json['question']?.toString() ?? '',
+      options: parsedOptions,
+      startTime: json['startTime'] ?? 0,
+      endTime: json['endTime'] ?? 0,
+      isActive: json['isActive'] ?? false,
+      votes: parsedVotes,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'question': question,
+      'options': options,
+      'startTime': startTime,
+      'endTime': endTime,
+      'isActive': isActive,
+      'votes': votes,
+    };
   }
 }
-
-Map<String, Set<String>> todayPollVotes = {'L': <String>{}, 'D': <String>{}};
 
 class DailyRecord {
   String l = '';
@@ -688,6 +727,10 @@ void main() async {
       ),
     );
     print("Firebase Initialized Successfully");
+    
+    // Initialize Notification Service
+    await NotificationService.init();
+
     try {
       await Supabase.initialize(
         url: 'https://whliroffubcqsalxdqfs.supabase.co',
@@ -835,41 +878,46 @@ class SyncService {
   static bool _switchCooldown = false;
   static bool _pollCooldown = false;
 
-  /// Immediately push ONLY the polls node to Firebase.
-  static Future<void> pushPollsNow({bool clear = false}) async {
-    _pollCooldown = true;
+  static Map<String, DynamicPoll> dynamicPolls = {};
+
+  static Future<void> createDynamicPoll(DynamicPoll poll) async {
     try {
-      if (clear) {
-        await _dbRef.child('polls').set({
-          'L': [],
-          'D': [],
-        });
-      } else {
-        await _dbRef.child('polls').runTransaction((Object? post) {
-          if (post == null) {
-            return Transaction.success({
-              'L': todayPollVotes['L']?.toList() ?? [],
-              'D': todayPollVotes['D']?.toList() ?? [],
-            });
-          }
-          Map<dynamic, dynamic> data = post as Map<dynamic, dynamic>;
-          Set<String> lSet = Set<String>.from(data['L'] ?? []);
-          Set<String> dSet = Set<String>.from(data['D'] ?? []);
-          lSet.addAll(todayPollVotes['L'] ?? []);
-          dSet.addAll(todayPollVotes['D'] ?? []);
-          return Transaction.success({
-            'L': lSet.toList(),
-            'D': dSet.toList(),
-          });
-        });
-      }
-      globalSyncTrigger.value++;
+      await _dbRef.child('dynamic_polls').child(poll.id).set(poll.toJson());
     } catch(e) {
-      print("Push polls error: $e");
+      print("Create poll error: $e");
     }
-    Future.delayed(const Duration(seconds: 3), () {
-      _pollCooldown = false;
-    });
+  }
+
+  static Future<void> stopDynamicPoll(String id) async {
+    try {
+      await _dbRef.child('dynamic_polls').child(id).update({'isActive': false});
+    } catch(e) {
+      print("Stop poll error: $e");
+    }
+  }
+
+  static Future<void> voteDynamicPoll(String pollId, String studentKey, String option) async {
+    try {
+      if (dynamicPolls[pollId] != null) {
+        dynamicPolls[pollId]!.votes[studentKey] = option;
+        globalSyncTrigger.value++;
+      }
+      await _dbRef.child('dynamic_polls').child(pollId).child('votes').child(studentKey).set(option);
+    } catch(e) {
+      print("Vote poll error: $e");
+    }
+  }
+
+  static Future<void> removeVoteDynamicPoll(String pollId, String studentKey) async {
+    try {
+      if (dynamicPolls[pollId] != null) {
+        dynamicPolls[pollId]!.votes.remove(studentKey);
+        globalSyncTrigger.value++;
+      }
+      await _dbRef.child('dynamic_polls').child(pollId).child('votes').child(studentKey).remove();
+    } catch(e) {
+      print("Remove vote error: $e");
+    }
   }
 
   /// Push only ONE attendance record to Firebase
@@ -1092,9 +1140,6 @@ class SyncService {
       await _dbRef.child('switches').set({
         'globalEntryL': globalEntryL,
         'globalEntryD': globalEntryD,
-        'globalPollL': globalPollL,
-        'globalPollD': globalPollD,
-        'globalPollDate': globalPollDate,
       });
       globalSyncTrigger.value++;
     } catch(e) {
@@ -1139,17 +1184,14 @@ class SyncService {
     for(var a in globalAdmins) adminsList.add(a.toJson());
     data['admins'] = adminsList;
     
-    data['polls'] = {'L': todayPollVotes['L']?.toList() ?? [], 'D': todayPollVotes['D']?.toList() ?? []};
+    data['dynamic_polls'] = dynamicPolls.map((k, v) => MapEntry(k, v.toJson()));
     
     // NOTICES, COMPLAINTS AND MENU ARE NOW IN SUPABASE ONLY.
     // We no longer push them to Firebase.
 
-        data['switches'] = {
+    data['switches'] = {
       'globalEntryL': globalEntryL,
       'globalEntryD': globalEntryD,
-      'globalPollL': globalPollL,
-      'globalPollD': globalPollD,
-      'globalPollDate': globalPollDate
     };
 
     // hiddenNotices & hiddenComplaints are now LOCAL ONLY (SharedPreferences)
@@ -1279,11 +1321,11 @@ class SyncService {
           });
         }
         
-        todayPollVotes['L']?.clear();
-        todayPollVotes['D']?.clear();
-        if (data['polls'] != null && !_pollCooldown) {
-          todayPollVotes['L'] = Set<String>.from(data['polls']['L'] ?? []);
-          todayPollVotes['D'] = Set<String>.from(data['polls']['D'] ?? []);
+        SyncService.dynamicPolls.clear();
+        if (data['dynamic_polls'] != null) {
+          (data['dynamic_polls'] as Map).forEach((k, v) {
+            dynamicPolls[k.toString()] = DynamicPoll.fromJson(v, k.toString());
+          });
         }
         
         if (data['menu'] != null) {
@@ -1329,9 +1371,6 @@ class SyncService {
         if (data['switches'] != null && !_switchCooldown) {
           globalEntryL = data['switches']['globalEntryL'] ?? false;
           globalEntryD = data['switches']['globalEntryD'] ?? false;
-          globalPollL = data['switches']['globalPollL'] ?? false;
-          globalPollD = data['switches']['globalPollD'] ?? false;
-          globalPollDate = data['switches']['globalPollDate'] ?? "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
         }
 
         // hiddenNotices & hiddenComplaints are LOCAL ONLY - don't load from Firebase
@@ -3479,7 +3518,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     globalSyncTrigger.addListener(_onSync);
     // Auto-refresh when dashboard opens
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      SyncService.fetchNow();
+      await SyncService.fetchNow();
       if (mounted) setState(() { _isFetchingData = true; });
       DateTime now = DateTime.now();
       for (int m = 1; m <= now.month; m++) {
@@ -3576,18 +3615,18 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                       children: [
                         SwipeToConfirm(
                           text: "Swipe for Lunch",
-                          onConfirm: () {
+                          onConfirm: () async {
                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.l = 'P'; _lunchMsgVisible = true; });
-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
                             _lunchMsgTimer?.cancel();
                             _lunchMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _lunchMsgVisible = false); });
                             Navigator.push(context, MaterialPageRoute(builder: (_) => MealPassScreen(mealName: 'Lunch', photoUrl: widget.photoUrl, name: widget.name, roomNo: widget.roomNo)));
                           },
                         ),
                         TextButton.icon(
-                          onPressed: () {
+                          onPressed: () async {
                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.l = 'A'; _lunchMsgVisible = true; });
-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
                             _lunchMsgTimer?.cancel();
                             _lunchMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _lunchMsgVisible = false); });
                           },
@@ -3621,18 +3660,18 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                       children: [
                         SwipeToConfirm(
                           text: "Swipe for Dinner",
-                          onConfirm: () {
+                          onConfirm: () async {
                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.d = 'P'; _dinnerMsgVisible = true; });
-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
                             _dinnerMsgTimer?.cancel();
                             _dinnerMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _dinnerMsgVisible = false); });
                             Navigator.push(context, MaterialPageRoute(builder: (_) => MealPassScreen(mealName: 'Dinner', photoUrl: widget.photoUrl, name: widget.name, roomNo: widget.roomNo)));
                           },
                         ),
                         TextButton.icon(
-                          onPressed: () {
+                          onPressed: () async {
                             setState(() { globalAttendanceMap.putIfAbsent(key, () => DailyRecord()); globalAttendanceMap[key]!.d = 'A'; _dinnerMsgVisible = true; });
-                            SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+                            await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
                             _dinnerMsgTimer?.cancel();
                             _dinnerMsgTimer = Timer(const Duration(minutes: 3), () { if (mounted) setState(() => _dinnerMsgVisible = false); });
                           },
@@ -3654,25 +3693,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             ),
           ),
         ),
-        _buildPollCard(),
+        _buildDynamicPolls(),
         _buildAttendanceCard(),
       ],
-    );
-  }  Widget _buildPollOption(
-      String meal, bool canVote, bool value, void Function(bool?) onChanged) {
-    return CheckboxListTile(
-      title: Text(
-        meal,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: canVote ? brandDark : brandGray,
-        ),
-      ),
-      value: value,
-      activeColor: brandOrange,
-      contentPadding: EdgeInsets.zero,
-      controlAffinity: ListTileControlAffinity.leading,
-      onChanged: canVote ? onChanged : null,
     );
   }
 
@@ -3829,144 +3852,130 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     );
   }
 
-  Widget _buildPollCard() {
+  Widget _buildDynamicPolls() {
     String studentKey = "${widget.roomNo}_${widget.name}";
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    
+    // Filter active polls
+    final polls = SyncService.dynamicPolls.values.where((p) {
+      final pollStart = DateTime.fromMillisecondsSinceEpoch(p.startTime);
+      bool isToday = pollStart.year == now.year && pollStart.month == now.month && pollStart.day == now.day;
+      return nowMs >= p.startTime && isToday;
+    }).toList();
+    if (polls.isEmpty) {
+      return Card(
+        color: Colors.white,
+        margin: const EdgeInsets.only(top: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(
+            child: Text("No polls are currently active.", style: TextStyle(color: brandGray, fontSize: 16)),
+          ),
+        ),
+      );
+    }
 
-    bool votedL = todayPollVotes['L']!.contains(studentKey);
-    bool votedD = todayPollVotes['D']!.contains(studentKey);
-
-    bool canVoteL = globalPollL && !votedL;
-    bool canVoteD = globalPollD && !votedD;
-
-    bool hasPendingVote = canVoteL || canVoteD;
-
-    return Card(
-      color: Colors.white,
-      margin: const EdgeInsets.only(top: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 4,
-      shadowColor: Colors.black12,
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
+    return Column(
+      children: polls.map((p) {
+        bool isLocked = nowMs > p.endTime || !p.isActive;
+        int totalVotes = p.votes.length;
+        String? myVote = p.votes[studentKey];
+        
+        return Card(
+          color: Colors.white,
+          margin: const EdgeInsets.only(top: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          elevation: 4,
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.poll, color: brandOrange),
-                SizedBox(width: 8),
-                Text(
-                  "Today's Mess Poll",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: brandDark,
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.poll, color: brandOrange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(p.question, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark)),
+                    ),
+                  ],
                 ),
+                const Divider(height: 32),
+                ...p.options.map((opt) {
+                  int optVotes = p.votes.values.where((v) => v == opt).length;
+                  double percent = totalVotes == 0 ? 0 : optVotes / totalVotes;
+                  bool amI = myVote == opt;
+                  
+                  return InkWell(
+                    onTap: isLocked ? null : () async {
+                      if (amI) {
+                        await SyncService.removeVoteDynamicPoll(p.id, studentKey);
+                      } else {
+                        await SyncService.voteDynamicPoll(p.id, studentKey, opt);
+                      }
+                      setState((){});
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Stack(
+                        children: [
+                          Container(
+                            height: 40,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade200,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: percent,
+                            child: Container(
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: amI ? brandOrange.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            height: 40,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(opt, style: TextStyle(fontWeight: FontWeight.bold, color: isLocked ? brandGray : brandDark)),
+                                    if (amI) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check_circle, size: 16, color: brandOrange)),
+                                  ],
+                                ),
+                                Text("${(percent * 100).toStringAsFixed(1)}%", style: const TextStyle(color: brandDark)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Total Votes: $totalVotes", style: const TextStyle(color: brandGray, fontSize: 12)),
+                    if (isLocked)
+                      const Text("Poll Closed", style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ],
+                )
               ],
             ),
-            const Divider(height: 32),
-
-            if (!globalPollL && !globalPollD)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Text(
-                    "No polls are currently active.",
-                    style: TextStyle(color: brandGray, fontSize: 16),
-                  ),
-                ),
-              )
-            else ...[
-              if (globalPollL)
-                _buildPollOption(
-                  "Lunch",
-                  canVoteL,
-                  _pollCheckL,
-                  (v) => setState(() => _pollCheckL = v!),
-                ),
-              if (globalPollD)
-                _buildPollOption(
-                  "Dinner",
-                  canVoteD,
-                  _pollCheckD,
-                  (v) => setState(() => _pollCheckD = v!),
-                ),
-
-              if (hasPendingVote) ...[
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      if (!_pollCheckL && !_pollCheckD) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Please select at least one meal!'),
-                            backgroundColor: Colors.redAccent,
-                          ),
-                        );
-                        return;
-                      }
-                      setState(() {
-                        if (_pollCheckL) todayPollVotes['L']!.add(studentKey);
-                        if (_pollCheckD) todayPollVotes['D']!.add(studentKey);
-                        _pollCheckL = false;
-                        _pollCheckD = false;
-                      });
-                      SyncService.pushPollsNow();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Poll Submitted Successfully!'),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: brandOrange,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: const Text(
-                      "Submit Vote",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ] else ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text(
-                        "Thanks for voting!",
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -4073,8 +4082,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             tooltip: 'Refresh',
-            onPressed: () {
-              SyncService.fetchNow();
+            onPressed: () async {
+              await SyncService.fetchNow();
             },
           ),
         ],
@@ -4435,7 +4444,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     globalSyncTrigger.addListener(_onSync);
     // Auto-refresh when dashboard opens
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      SyncService.fetchNow();
+      await SyncService.fetchNow();
       if (mounted) setState(() { _isFetchingData = true; });
       DateTime now = DateTime.now();
       for (int m = 1; m <= now.month; m++) {
@@ -4573,7 +4582,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   final prefs = await SharedPreferences.getInstance();
                   List<String> adminStrings = globalAdmins.map((a) => jsonEncode(a.toJson())).toList();
                   await prefs.setStringList('globalAdmins', adminStrings);
-                  SyncService.pushAdmins();
+                  await SyncService.pushAdmins();
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Admin created successfully!"), backgroundColor: Colors.green));
                   _newAdminMobileCtrl.clear();
                   _newAdminPinCtrl.clear();
@@ -4594,102 +4603,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Card(
-          color: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 4,
-          shadowColor: Colors.black12,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "Live Poll Results",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: brandDark,
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () async {
-                        setState(() {
-                          todayPollVotes = {'L': <String>{}, 'D': <String>{}};
-                        });
-                        await SyncService.pushPollsNow(clear: true);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Poll data cleared!')),
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.delete_sweep,
-                        color: Colors.redAccent,
-                        size: 18,
-                      ),
-                      label: const Text(
-                        "Clear",
-                        style: TextStyle(
-                          color: Colors.redAccent,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Column(
-                        children: [
-                          const Icon(Icons.lunch_dining, color: brandOrange),
-                          const SizedBox(height: 4),
-                          Text(
-                            "${todayPollVotes['L']!.length}",
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            "Lunch",
-                            style: TextStyle(color: brandGray, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        children: [
-                          const Icon(Icons.dinner_dining, color: brandOrange),
-                          const SizedBox(height: 4),
-                          Text(
-                            "${todayPollVotes['D']!.length}",
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Text(
-                            "Dinner",
-                            style: TextStyle(color: brandGray, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
+
         ...(() {
           var dues = _getPendingDues();
           if (dues.isEmpty) return <Widget>[const SizedBox.shrink()];
@@ -4857,10 +4771,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         Icons.delete_outline,
                         color: Colors.redAccent,
                       ),
-                      onPressed: () {
-                        setState(() {
-                          SyncService.deleteNotice(notice.id);
-                        });
+                      onPressed: () async {
+                        await SyncService.deleteNotice(notice.id);
+                        setState(() {});
                       },
                     ),
                   ),
@@ -4929,7 +4842,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            onPressed: () {
+            onPressed: () async {
               if (titleCtrl.text.isNotEmpty && msgCtrl.text.isNotEmpty) {
                 setState(() {
                   globalNotices.insert(
@@ -4942,7 +4855,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ),
                   );
                 });
-                SyncService.pushNotices();
+                await SyncService.pushNotices();
                 Navigator.pop(context);
               }
             },
@@ -4968,7 +4881,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  void _closeMessAndMarkAbsent(String meal) {
+  void _closeMessAndMarkAbsent(String meal) async {
     DateTime now = DateTime.now();
     for (var s in globalRegisteredStudents) {
       String key = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
@@ -4985,7 +4898,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         globalAttendanceMap[key]!.d = 'A';
       }
       // Push each record individually to Firebase
-      SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+      await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
     }
   }
 
@@ -5053,7 +4966,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 globalMenuIsPdf = file.extension?.toLowerCase() == 'pdf';
                               });
                               setState(() {});
-                              SyncService.pushMenu();
+                              await SyncService.pushMenu();
                             }
                           }
                         },
@@ -5080,7 +4993,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             Expanded(child: Text(globalMenuFile != null ? globalMenuFile!.path.split('/').last.split('\\').last : 'Uploaded Menu', maxLines: 2, overflow: TextOverflow.visible)),
                             IconButton(
                               icon: const Icon(Icons.delete, color: Colors.redAccent),
-                              onPressed: () {
+                              onPressed: () async {
                                 setDialogState(() {
                                   globalMenuFile = null;
                                   globalMenuUrl = null;
@@ -5088,7 +5001,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   globalMenuIsPdf = false;
                                 });
                                 setState(() {});
-                                SyncService.pushMenu();
+                                await SyncService.pushMenu();
                               },
                             ),
                           ],
@@ -5125,6 +5038,110 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       },
     );
   }
+  void _showCreatePollDialog() {
+    final qCtrl = TextEditingController();
+    TimeOfDay startTime = TimeOfDay.now();
+    TimeOfDay endTime = TimeOfDay(hour: startTime.hour + 2, minute: startTime.minute);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Create New Poll'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: qCtrl,
+                      decoration: const InputDecoration(labelText: 'Question'),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            qCtrl.text = "Today's Lunch?";
+                            setDialogState(() {});
+                          },
+                          child: const Text("Lunch?"),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            qCtrl.text = "Today's Dinner?";
+                            setDialogState(() {});
+                          },
+                          child: const Text("Dinner?"),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        const Text("Start: "),
+                        TextButton(
+                          onPressed: () async {
+                            final t = await showTimePicker(context: context, initialTime: startTime);
+                            if (t != null) setDialogState(() => startTime = t);
+                          },
+                          child: Text(startTime.format(context)),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        const Text("End: "),
+                        TextButton(
+                          onPressed: () async {
+                            final t = await showTimePicker(context: context, initialTime: endTime);
+                            if (t != null) setDialogState(() => endTime = t);
+                          },
+                          child: Text(endTime.format(context)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (qCtrl.text.trim().isEmpty) return;
+                    
+                    final now = DateTime.now();
+                    final startDt = DateTime(now.year, now.month, now.day, startTime.hour, startTime.minute);
+                    final endDt = DateTime(now.year, now.month, now.day, endTime.hour, endTime.minute);
+                    
+                    final poll = DynamicPoll(
+                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      question: qCtrl.text.trim(),
+                      options: ["Yes", "No"],
+                      startTime: startDt.millisecondsSinceEpoch,
+                      endTime: endDt.millisecondsSinceEpoch,
+                      isActive: true,
+                      votes: {},
+                    );
+                    
+                    Navigator.pop(context);
+                    await SyncService.createDynamicPoll(poll);
+                    setState((){});
+                  },
+                  child: const Text('Create'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -5144,8 +5161,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
             tooltip: 'Refresh',
-            onPressed: () {
-              SyncService.fetchNow();
+            onPressed: () async {
+              await SyncService.fetchNow();
             },
           ),
         ],
@@ -5209,9 +5226,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   title: const Text('Lunch'),
                   activeColor: brandOrange,
                   value: globalEntryL,
-                  onChanged: (v) {
+                  onChanged: (v) async {
                     setState(() => globalEntryL = v);
-                    SyncService.pushSwitchesNow();
+                    await SyncService.pushSwitchesNow();
                     if (v == false) {
                       _closeMessAndMarkAbsent('l');
                     }
@@ -5221,9 +5238,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   title: const Text('Dinner'),
                   activeColor: brandOrange,
                   value: globalEntryD,
-                  onChanged: (v) {
+                  onChanged: (v) async {
                     setState(() => globalEntryD = v);
-                    SyncService.pushSwitchesNow();
+                    await SyncService.pushSwitchesNow();
                     if (v == false) {
                       _closeMessAndMarkAbsent('d');
                     }
@@ -5234,49 +5251,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ExpansionTile(
               leading: const Icon(Icons.poll, color: brandDark),
               title: const Text(
-                'Mess Poll',
+                'Live Polls',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               children: [
-                // removed Breakfast poll switch
-                SwitchListTile(
-                  title: const Text('Lunch'),
-                  activeColor: brandOrange,
-                  value: globalPollL,
-                  onChanged: (v) {
-                    setState(() {
-                      globalPollL = v;
-                      if (v) {
-                        String today = "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
-                        if (globalPollDate != today) {
-                          globalPollDate = today;
-                          todayPollVotes['L']?.clear();
-                          todayPollVotes['D']?.clear();
-                        }
-                      }
-                    });
-                    SyncService.pushSwitchesNow();
-                  },
+                ListTile(
+                  leading: const Icon(Icons.add, color: brandOrange),
+                  title: const Text("➕ Create New Poll", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
+                  onTap: _showCreatePollDialog,
                 ),
-                SwitchListTile(
-                  title: const Text('Dinner'),
-                  activeColor: brandOrange,
-                  value: globalPollD,
-                  onChanged: (v) {
-                    setState(() {
-                      globalPollD = v;
-                      if (v) {
-                        String today = "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
-                        if (globalPollDate != today) {
-                          globalPollDate = today;
-                          todayPollVotes['L']?.clear();
-                          todayPollVotes['D']?.clear();
-                        }
-                      }
-                    });
-                    SyncService.pushSwitchesNow();
-                  },
-                ),
+                if (SyncService.dynamicPolls.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text("No active polls.", style: TextStyle(color: brandGray)),
+                  ),
+                ...SyncService.dynamicPolls.values.map((p) {
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(p.question, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text("Total Votes: ${p.votes.length}"),
+                          const SizedBox(height: 8),
+                          if (p.isActive)
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                                onPressed: () async {
+                                  await SyncService.stopDynamicPoll(p.id);
+                                  setState(() {});
+                                },
+                                child: const Text("End Poll Now"),
+                              ),
+                            )
+                          else
+                            const Text("Closed", style: TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ],
             ),
             ListTile(
@@ -5381,8 +5400,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       MaterialPageRoute(
                         builder: (context) => AdminComplaintsScreen(
                           hidden: globalAdminHiddenComplaints,
-                          onDelete: (id) {
-                            SyncService.deleteComplaint(id);
+                          onDelete: (id) async {
+                            await SyncService.deleteComplaint(id);
                           },
                         ),
                       ),
@@ -5660,7 +5679,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onPressed: () {
+              onPressed: () async {
                 if (titleCtrl.text.isNotEmpty && msgCtrl.text.isNotEmpty) {
                   setState(() {
                     globalComplaints.insert(
@@ -5677,7 +5696,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                       ),
                     );
                   });
-                  SyncService.pushComplaints();
+                  await SyncService.pushComplaints();
                   Navigator.pop(context);
                 }
               },
@@ -6526,8 +6545,8 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await dbRef.child('polls').remove();
       
       final supa = Supabase.instance.client;
-      await supa.from('notices').delete().neq('id', 'dummy');
-      await supa.from('complaints').delete().neq('id', 'dummy');
+      await supa.from('notices').delete().not('id', 'is', null);
+      await supa.from('complaints').delete().not('id', 'is', null);
       
       globalRegisteredStudents.clear();
       
@@ -6535,8 +6554,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       globalMonthlyPaid.clear();
       globalNotices.clear();
       globalComplaints.clear();
-      todayPollVotes['L']?.clear();
-      todayPollVotes['D']?.clear();
+      SyncService.dynamicPolls.clear();
       
       await SyncService.pushStudents();
       await dbRef.child('force_logout').set(DateTime.now().millisecondsSinceEpoch);
@@ -6846,20 +6864,20 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 // --- TEMPORARY EDITING BLOCK START ---
                 if (isEditingEnabled && !isEmpty) {
                   return InkWell(
-                    onTap: () {
+                    onTap: () async {
+                      String key =
+                          "${_selectedDailyDate.year}-${_selectedDailyDate.month}-${_selectedDailyDate.day}_${room}_${name}";
+                      DailyRecord rec =
+                          globalAttendanceMap[key] ?? DailyRecord();
                       setState(() {
-                        String key =
-                            "${_selectedDailyDate.year}-${_selectedDailyDate.month}-${_selectedDailyDate.day}_${room}_${name}";
-                        DailyRecord rec =
-                            globalAttendanceMap[key] ?? DailyRecord();
                         if (mealType == 'L') {
                           rec.l = (rec.l == 'P') ? 'A' : 'P';
                         } else {
                           rec.d = (rec.d == 'P') ? 'A' : 'P';
                         }
                         globalAttendanceMap[key] = rec;
-                        SyncService.pushAttendance(key, rec);
                       });
+                      await SyncService.pushAttendance(key, rec);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -7224,7 +7242,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                 if (isEditingEnabled) {
                                   return InkWell(
                                     onTap: () {
-                                      setModalState(() {
+                                      setModalState(() async {
                                         String key =
                                             "${_selectedMonth.year}-${_selectedMonth.month}-${h['day']}_${student.roomNo}_${student.name}";
                                         DailyRecord rec =
@@ -7236,7 +7254,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                           rec.d = (rec.d == 'P') ? 'A' : 'P';
                                         }
                                         globalAttendanceMap[key] = rec;
-                                        SyncService.pushAttendance(key, rec);
+                                        await SyncService.pushAttendance(key, rec);
 
                                         setState(
                                           () {},
@@ -7901,14 +7919,14 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                         child: const Text("Cancel"),
                                       ),
                                       ElevatedButton(
-                                        onPressed: () {
+                                        onPressed: () async {
                                           int? val = int.tryParse(amtCtrl.text);
                                           if (val != null) {
                                             setState(() {
                                               globalMonthlyPaid[row['monthKey']] =
                                                   val;
                                             });
-                                            SyncService.pushPaid();
+                                            await SyncService.pushPaid();
                                           }
                                           Navigator.pop(ctx);
                                         },
@@ -8446,7 +8464,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (nameCtrl.text.isEmpty || roomCtrl.text.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name and Room No are required')));
                 return;
@@ -8459,7 +8477,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                   globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, student.pin, email: student.email);
                 }
               }
-              SyncService.pushStudents();
+              await SyncService.pushStudents();
               Navigator.pop(ctx);
             },
             child: const Text('Save'),
@@ -8552,9 +8570,9 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                                       actions: [
                                         TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
                                         TextButton(
-                                          onPressed: deleteText == 'DELETE' ? () {
+                                          onPressed: deleteText == 'DELETE' ? () async {
                                             globalRegisteredStudents.remove(s);
-                                            SyncService.pushStudents();
+                                            await SyncService.pushStudents();
                                             Navigator.pop(dCtx);
                                           } : null, 
                                           child: Text('Delete', style: TextStyle(color: deleteText == 'DELETE' ? Colors.red : Colors.grey)),
