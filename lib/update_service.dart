@@ -139,8 +139,8 @@ class _UpdateDialogWidgetState extends State<UpdateDialogWidget> {
 
     try {
       // Use temporary directory - compatible with ALL Android versions (Android 5.0 to 14+)
-      // without needing WRITE_EXTERNAL_STORAGE permission on Android 10+
-      final tempDir = await getTemporaryDirectory();
+      // Use getExternalStorageDirectory for better compatibility with Android Package Installer
+      final tempDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
       final filePath = '${tempDir.path}/app_update_${widget.version}.apk';
       final file = File(filePath);
 
