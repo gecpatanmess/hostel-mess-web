@@ -3922,7 +3922,12 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     ),
                   ],
                 ),
-                const Divider(height: 32),
+                const SizedBox(height: 8),
+                Text(
+                  "Time: ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.startTime)).format(context)} - ${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(p.endTime)).format(context)}",
+                  style: const TextStyle(color: brandGray, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                const Divider(height: 24),
                 ...p.options.map((opt) {
                   int optVotes = p.votes.values.where((v) => v == opt).length;
                   double percent = totalVotes == 0 ? 0 : optVotes / totalVotes;
