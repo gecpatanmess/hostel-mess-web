@@ -667,314 +667,6 @@ class DailyRecord {
 Map<String, DailyRecord> globalAttendanceMap = {};
 Map<String, int> globalMonthlyPaid = {};
 List<String> hiddenComplaints = [];
-// ===== SAMPLE DATA FOR TESTING (REMOVE LATER) =====
-bool _sampleDataLoaded = false;
-void loadSampleAttendanceData(String roomNo, String name) {
-  if (!_sampleDataLoaded) {
-    _sampleDataLoaded = true;
-    // _loadFakeStudents();
-  }
-  Map<String, List<String>> sampleDays = {
-    '2026-9-1': ['P', 'P'], // Full day = 140
-    '2026-9-2': ['P', 'A'], // Skipped dinner = 70
-    '2026-9-3': ['P', 'P'], // Full day = 140
-    '2026-9-4': ['P', 'P'], // Full day = 140
-    '2026-9-5': ['P', 'P'], // Full day = 140
-    '2026-9-6': ['P', 'P'], // Full day = 140
-    '2026-9-7': ['P', 'P'], // Full day = 140
-    '2026-9-8': ['P', 'P'], // Full day = 140
-    '2026-9-9': ['P', 'P'], // Full day = 140
-    '2026-9-10': ['P', 'P'], // Full day = 140
-    '2026-9-11': ['P', 'A'], // Skipped dinner = 70
-    '2026-9-12': ['P', 'P'], // Full day = 140
-    '2026-9-13': ['P', 'P'], // Full day = 140
-    '2026-9-14': ['A', 'A'], // Absent full day = 0
-    '2026-9-15': ['P', 'P'], // Full day = 140
-    '2026-9-16': ['P', 'P'], // Full day = 140
-    '2026-9-17': ['P', 'P'], // Full day = 140
-    '2026-9-18': ['P', 'P'], // Full day = 140
-    '2026-9-19': ['P', 'P'], // Full day = 140
-    '2026-9-20': ['A', 'P'], // Skipped lunch = 70
-    '2026-9-21': ['P', 'P'], // Full day = 140
-    '2026-9-22': ['P', 'P'], // Full day = 140
-    '2026-9-23': ['P', 'P'], // Full day = 140
-    '2026-9-24': ['P', 'P'], // Full day = 140
-    '2026-9-25': ['P', 'P'], // Full day = 140
-  };
-  sampleDays.forEach((date, meals) {
-    String key = "${date}_${roomNo}_${name}";
-    DailyRecord rec = DailyRecord();
-    rec.l = meals[0];
-    rec.d = meals[1];
-    globalAttendanceMap[key] = rec;
-  });
-}
-
-void _loadFakeStudents() {
-  String? dummyPhoto = null;
-
-  Map<String, List<String>> realStudents = {
-    '101': [
-      'Thakore Yashrajsinh Amitkumar',
-      'Chaudhary Prins Dineshbhai',
-      'Shingala Dharm Maheshbhai',
-      'Aakash Kumar',
-    ],
-    '102': [
-      'Prajapati Daksh kumar Bhikhabhai',
-      'Pawan Sharma',
-      'Satyam Rambahadur Yadav',
-      'Purvik Kantibhai Chaudhari',
-    ],
-    '103': [
-      'Prajapati Rakeshkumar Vineshbhai',
-      'Chaudhary Vijaybhai Meghrajbhai',
-      'Mali Vipulbhai Dineshbhai',
-      'Shubham Kumar Singh',
-    ],
-    '104': [
-      'Chetariya Janak Bhikhubhai',
-      'Dhruvkumar Hasubhai Parmar',
-      'Chaudhary Bharat Kanjibhai',
-      'Rathod Dixitkumar Rameshbhai',
-    ],
-    '105': [
-      'Chauhan Jay Bharatbhai',
-      'Pipaliya Yash Rameshbhai',
-      'Param Rupeshkumar Bariya',
-      'Radadiya Neel Prafulbhai',
-    ],
-    '106': [
-      'Choudhary Shivam Anandmohan',
-      'Aryan Singh',
-      'Pratik Roshan Patra',
-      'Manish N Jha',
-    ],
-    '107': [
-      'Gauravbhai Jayantibhai Makwana',
-      'Kamlesh Govindbhai Pamak',
-      'Dhruv Chandrakant Anjani',
-      'Bhavesh Umesh Kandpal',
-    ],
-    '108': [
-      'Malaviya Bhavik',
-      'Rathod Manish Babulal',
-      'Kushwaha Riteshkumar Harendra',
-      'Mandal Anmol Ramlal',
-    ],
-    '109': [
-      'Zala Omdevsinh Sanjaysinh',
-      'Zala Yashpalsinh',
-      'Tadvi Mihirkumar',
-      'Patel Kishan Vinodkumar',
-    ],
-    '110': [
-      'Parmar Mihir Dineshbhai',
-      'Prajapati Kunj Bharatbhai',
-      'Patel Dax Bhaveshkumar',
-      'Dhandhala Prafulkumar Pravinbhai',
-    ],
-    '111': [
-      'Bijva Aryan Amarbhai',
-      'Jadav Deven Maheshbhai',
-      'Tarun Ganvit',
-      'Pagi Devang Sanjaybhai',
-    ],
-    '112': [
-      'Subhranshu Mishra',
-      'Bhavik Kana Chavda',
-      'Parth V Karavadra',
-      'Pal Avanish Bhorik',
-    ],
-    '113': [
-      'Upadhyay Vishesh Ajay',
-      'Chaudhary Jayeshbhai Kamabhai',
-      'Parmar Dhruvkumar Prabhatsinh',
-      'Mayur Rajarambhai Machhi',
-    ],
-    '114': [
-      'Akashbhai Dineshbhai Darji',
-      'Bhautikbhai Virabhanbhai Chaudhary',
-      'Chaudhary Jagrutbhai Nanjibhai',
-      'Alpeshkumar Devabhai Chaudhari',
-    ],
-    '115': [
-      'Sahilkumar Lalbacchan Yadav',
-      'Kori Bablukumar Omprakash',
-      'Stephen Jack Abraham Sunder',
-      'Jha Rohankumar Vijaykumar',
-    ],
-    '116': [
-      'Nayak Pranayakumar Sanatan',
-      'Rawat Aditya Dhananjay',
-      'Rathva Niranjankumar Nareshbhai',
-      'Abhishek Singh',
-    ],
-    '117': [
-      'Patel Yashraj Dinkar',
-      'Singh Ayush Mukesh',
-      'Baria Kalpeshkumar Jashubhai',
-      'Golakiya Manav Kamleshbhai',
-    ],
-    '118': [
-      'Suthar Darshan Sinh J.',
-      'Patel Yug Dhirubhai',
-      'Bumtariya Chaitany Satishbhai',
-      'Singh Atul Anil',
-    ],
-    '119': [
-      'Vignish Bhat',
-      'Parmar Shubham Gopalbhai',
-      'Vansh Pandita',
-      'Rudra Yogeshkumar Dharva',
-    ],
-    '120': [
-      'Amarkumar Yadav',
-      'Chaudhari Jinay Shaileshbhai',
-      'Pruthviraj Shivrambhai Vasava',
-      'Maitrik Parmar',
-    ],
-    '201': [
-      'Chaudhary Srawan Kumar',
-      'Chaudhary Jitubhai Bhavabhai',
-      'Yogeshbhai Parmar',
-      'Adraniya Jigneshji Dasharathji',
-    ],
-    '202': [
-      'Jehanraj Mittalkumar Chudasama',
-      'Rehan Siddique',
-      'Shreshthi Prafulkumar Vishwaratnaji',
-      'Het Chetankumar Brahmbhatt',
-    ],
-    '203': [
-      'Padvi Yashilbhai Shukarbhai',
-      'Vyas Vashishth Mukeshbhai',
-      'Luhar Sumit Vinodbhai',
-      'Sudhanshu Kumar',
-    ],
-    '204': [
-      'Bharadva Priyank Pravinbhai',
-      'Hingora Arman Osmanbhai',
-      'Agath Mihir Ranmal',
-      'Prajapati Jaybhai Jayantibhai',
-    ],
-    '205': [
-      'Jani Nikhil Sureshbhai',
-      'Yash Soni',
-      'Vishal Panchal',
-      'Vansh Dhamecha',
-    ],
-    '206': [
-      'Modi Purav Miteshbhai',
-      'Sathvara Jaykumar Anil Bhai',
-      'Maurya Abhinay Manoj',
-      'Chaudhary Milan',
-    ],
-    '207': [
-      'Dev Yogeshbhai Ahir',
-      'Patel Krish Ketan',
-      'Mehta Abhishek Hirenbhai',
-      'Yadav Harsh Baljeetsingh',
-    ],
-    '208': [
-      'Dhruv Narendrakumar Solanki',
-      'Singh Niraj Tejnarayan',
-      'Jadav Shyam Kalpesh',
-      'Chaudhari Nirav Jayantikumar',
-    ],
-    '209': [
-      'Krish Vijaybhai Unagar',
-      'Charan Parth Satendra',
-      'Prajapati Kalu Mansukhbhai',
-      'Gohel Ved Vijaybhai',
-    ],
-    '210': [
-      'Aditya Pruthvishkumar Brahmakshatriya',
-      'Damor Utpalkumar Nareshbhai',
-      'Kaklotar Harsh Shaileshbhai',
-      'Baraiya Ishvar Rameshbhai',
-    ],
-    '211': [
-      'Singh Yash Shashivendra',
-      'Kasela Rushiraj Ashokbhai',
-      'Rishu Singh',
-      'Kavad Dhruvil Girdharbhai',
-    ],
-    '212': [
-      'Chaudhary Dipak Prakash Bhai',
-      'Hareshbhai Valabhai Asal',
-      'Vasava Kaushikbhai Vipulbhai',
-      'Harshit Kumavat',
-    ],
-    '213': [
-      'Patel Shivoham Tirthram',
-      'Varma Rahul Jagdishbhai',
-      'Kamble Mohit Dharmesh',
-      'Pray Vijaybhai Patel',
-    ],
-    '214': [
-      'Ahir Dhaivatkumar Prakashbhai',
-      'Vishvajit Sursinh Solanki',
-      'Patel Prince Sanjaykumar',
-      'Solanki Mayur Virajibhai',
-    ],
-    '215': [
-      'Gaurav Raj',
-      'Joshi Parv Kashyap',
-      'Pawar Dakshdeep Jayesh',
-      'Sharma Kaustuk Ratnesh',
-    ],
-    '216': [
-      'Dheeraj Pandita',
-      'Jigar Rajput',
-      'Kavya Chaudhari',
-      'Singh Aryan Rakesh',
-    ],
-    '217': [
-      'Sharma Abhikumar Pankajkumar',
-      'Patel Jainish Jayesh',
-      'Rajkumar V. Telee',
-      'Gelot Dilip Pareshkumar',
-    ],
-    '218': [
-      'Solanki Sujalkumar Dasharathji',
-      'Sasmiya Pareshbhai Kantibhai',
-      'Ladumor Piyush Kalubhai',
-      'Thakor Yuvrajsing Kamleshsing',
-    ],
-    '219': [
-      'Satyam Manoj Yadav',
-      'Chaudhari Yogeshkumar Vajeshibhai',
-      'Krishkumar Laxmanbhai Chaudhari',
-      'Joshi Ronak Rameshbhai',
-    ],
-    '220': [
-      'Rudra Navinbhai Panchal',
-      'Namra Durgeshchand Tripathi',
-      'Fakir Shohebsha Badarsha',
-      'Sukla Utkarsh Vipin',
-    ],
-  };
-
-  realStudents.forEach((room, names) {
-    for (int idx = 0; idx < names.length; idx++) {
-      String studentName = names[idx];
-      if (!globalRegisteredStudents.any(
-        (st) => st.name == studentName && st.roomNo == room,
-      )) {
-        globalRegisteredStudents.add(
-          RegisteredStudent(studentName, room, dummyPhoto, ''),
-        );
-      }
-
-      int seed = studentName.hashCode;
-
-      // Generate strictly from Jan 2026 to Sep 2026
-      // Fake data loop removed as per request
-    }
-  });
-}
-// ===== END SAMPLE DATA =====
 
 File? globalMenuFile;
 bool globalMenuIsPdf = false;
@@ -1011,7 +703,7 @@ void main() async {
     print("Firebase Init Error: $e");
   }
 
-  // _loadFakeStudents();
+  
   await _loadDataFromPrefs();
   runApp(const MyApp());
 }
@@ -1259,7 +951,7 @@ class SyncService {
             }
           }
         }
-        // _loadFakeStudents();
+        
       }
 
       // 2. Fetch from Supabase
@@ -1657,7 +1349,7 @@ class SyncService {
             }
           }
         }
-        // _loadFakeStudents();
+        
         
         await saveRegisteredStudents();
         final prefs = await SharedPreferences.getInstance();
@@ -2442,13 +2134,13 @@ class _LoginScreenState extends State<LoginScreen> {
           var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name.toLowerCase() == savedStudentName!.toLowerCase());
           existingStudent.pin = hashPassword(newPassCtrl.text);
           await saveRegisteredStudents();
-          SyncService.pushStudents();
+          await SyncService.pushStudents();
         } else {
           var admin = globalAdmins.firstWhere((a) => a.phone == savedAdminPhone);
           admin.pin = hashPassword(newPassCtrl.text);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
-          SyncService.pushAdmins();
+          await SyncService.pushAdmins();
         }
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password reset successfully!"), backgroundColor: Colors.green));
       }
@@ -2577,7 +2269,7 @@ class _LoginScreenState extends State<LoginScreen> {
         studentPhotoUrl = existingStudent.photoUrl; // Use existing photo unconditionally
       }
       await saveRegisteredStudents();
-      SyncService.pushStudents();
+      await SyncService.pushStudents();
     } else {
       if (studentPhotoUrl == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2615,7 +2307,7 @@ class _LoginScreenState extends State<LoginScreen> {
         RegisteredStudent(typedName, selectedRoom!, studentPhotoUrl, hashedTypedPin, email: _studentEmailController.text.trim()),
       );
       await saveRegisteredStudents();
-      SyncService.pushStudents();
+      await SyncService.pushStudents();
     }
 
     final prefs = await SharedPreferences.getInstance();
@@ -2692,7 +2384,7 @@ class _LoginScreenState extends State<LoginScreen> {
             admin.pin = hashPassword(pin);
             final p = await SharedPreferences.getInstance();
             await p.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
-            SyncService.pushAdmins();
+            await SyncService.pushAdmins();
           }
           // Success
           final prefs = await SharedPreferences.getInstance();
@@ -4926,11 +4618,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                     TextButton.icon(
-                      onPressed: () {
+                      onPressed: () async {
                         setState(() {
                           todayPollVotes = {'L': <String>{}, 'D': <String>{}};
                         });
-                        SyncService.pushPollsNow(clear: true);
+                        await SyncService.pushPollsNow(clear: true);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Poll data cleared!')),
                         );
@@ -6838,7 +6530,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await supa.from('complaints').delete().neq('id', 'dummy');
       
       globalRegisteredStudents.clear();
-      _loadFakeStudents(); // Restores all 160 names as unregistered
+      
       globalAttendanceMap.clear();
       globalMonthlyPaid.clear();
       globalNotices.clear();
@@ -6846,7 +6538,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       todayPollVotes['L']?.clear();
       todayPollVotes['D']?.clear();
       
-      SyncService.pushStudents();
+      await SyncService.pushStudents();
       await dbRef.child('force_logout').set(DateTime.now().millisecondsSinceEpoch);
       globalSyncTrigger.value++;
       
