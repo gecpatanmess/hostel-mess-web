@@ -656,7 +656,7 @@ bool _sampleDataLoaded = false;
 void loadSampleAttendanceData(String roomNo, String name) {
   if (!_sampleDataLoaded) {
     _sampleDataLoaded = true;
-    _loadFakeStudents();
+    // _loadFakeStudents();
   }
   Map<String, List<String>> sampleDays = {
     '2026-9-1': ['P', 'P'], // Full day = 140
@@ -995,7 +995,7 @@ void main() async {
     print("Firebase Init Error: $e");
   }
 
-  _loadFakeStudents();
+  // _loadFakeStudents();
   await _loadDataFromPrefs();
   runApp(const MyApp());
 }
@@ -1237,10 +1237,12 @@ class SyncService {
         globalRegisteredStudents.clear();
         if (data['students'] != null) {
           for(var s in (data['students'] as List)) {
-            globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            if (s != null) {
+              globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            }
           }
         }
-        _loadFakeStudents();
+        // _loadFakeStudents();
       }
 
       // 2. Fetch from Supabase
@@ -1632,10 +1634,12 @@ class SyncService {
         globalRegisteredStudents.clear();
         if (data['students'] != null) {
           for(var s in (data['students'] as List)) {
-            globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            if (s != null) {
+              globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            }
           }
         }
-        _loadFakeStudents();
+        // _loadFakeStudents();
         
         await saveRegisteredStudents();
         final prefs = await SharedPreferences.getInstance();
@@ -2060,10 +2064,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final ImagePicker _picker = ImagePicker();
 
   String? selectedRoom;
-  final List<String> roomNumbers = [
-    for (int i = 101; i <= 120; i++) i.toString(),
-    for (int i = 201; i <= 220; i++) i.toString(),
-  ];
+  List<String> get roomNumbers {
+    var rooms = globalRegisteredStudents.map((s) => s.roomNo).toSet().toList();
+    rooms.sort((a, b) => (int.tryParse(a) ?? 0).compareTo(int.tryParse(b) ?? 0));
+    return rooms;
+  }
 
 
   @override
@@ -2181,7 +2186,9 @@ class _LoginScreenState extends State<LoginScreen> {
         if (snap.exists && snap.value != null) {
           globalRegisteredStudents.clear();
           for(var s in (snap.value as List)) {
-            globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            if (s != null) {
+              globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+            }
           }
         }
       } catch(e) {}
@@ -2458,7 +2465,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (snap.exists && snap.value != null) {
         globalRegisteredStudents.clear();
         for(var s in (snap.value as List)) {
-          globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+          if (s != null) {
+            globalRegisteredStudents.add(RegisteredStudent.fromJson(Map<String,dynamic>.from(s)));
+          }
         }
       }
     } catch(e) {}
@@ -3012,7 +3021,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: DropdownButtonFormField<String>(isExpanded: true,
-                    value: selectedStudentName,
+                    value: (selectedRoom != null && globalRegisteredStudents.where((s) => s.roomNo == selectedRoom).map((e) => e.name).contains(selectedStudentName)) ? selectedStudentName : null,
                     hint: const Text(
                       "Select Name",
                       style: TextStyle(color: brandGray, fontSize: 14),
@@ -3516,7 +3525,7 @@ class _LoginScreenState extends State<LoginScreen> {
               fontWeight: FontWeight.normal,
             ),
           ),
-          value: selectedRoom,
+          value: roomNumbers.contains(selectedRoom) ? selectedRoom : null,
           items: roomNumbers.map((String room) {
             return DropdownMenuItem<String>(
               value: room,
@@ -5656,6 +5665,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
 
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.people_alt, color: brandDark),
+              title: const Text(
+                'Manage Students',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const ManageStudentsScreen()));
+              },
+            ),
 
             ListTile(
 
@@ -6759,7 +6779,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await supa.from('complaints').delete().neq('id', 'dummy');
       
       globalRegisteredStudents.clear();
-      _loadFakeStudents(); // Restores all 160 names as unregistered
+      // _loadFakeStudents(); // Restores all 160 names as unregistered
       globalAttendanceMap.clear();
       globalMonthlyPaid.clear();
       globalNotices.clear();
@@ -8630,6 +8650,166 @@ class AboutDevelopersScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class ManageStudentsScreen extends StatefulWidget {
+  const ManageStudentsScreen({super.key});
+  @override
+  State<ManageStudentsScreen> createState() => _ManageStudentsScreenState();
+}
+
+class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
+  String _searchQuery = '';
+  
+  @override
+  void initState() {
+    super.initState();
+    globalSyncTrigger.addListener(_onSync);
+  }
+  
+  @override
+  void dispose() {
+    globalSyncTrigger.removeListener(_onSync);
+    super.dispose();
+  }
+
+  void _onSync() {
+    if (mounted) setState(() {});
+  }
+  
+  void _showAddEditDialog({RegisteredStudent? student}) {
+    final nameCtrl = TextEditingController(text: student?.name ?? '');
+    final roomCtrl = TextEditingController(text: student?.roomNo ?? '');
+    final pinCtrl = TextEditingController(text: student?.pin ?? '');
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(student == null ? 'Add Student' : 'Edit Student'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
+            TextField(controller: roomCtrl, decoration: const InputDecoration(labelText: 'Room No')),
+            TextField(controller: pinCtrl, decoration: const InputDecoration(labelText: 'PIN')),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.isEmpty || roomCtrl.text.isEmpty || pinCtrl.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name, Room No, and PIN are required')));
+                return;
+              }
+              if (student == null) {
+                globalRegisteredStudents.add(RegisteredStudent(nameCtrl.text, roomCtrl.text, null, pinCtrl.text));
+              } else {
+                int idx = globalRegisteredStudents.indexOf(student);
+                if (idx != -1) {
+                  globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, pinCtrl.text, email: student.email);
+                }
+              }
+              SyncService.pushStudents();
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    List<RegisteredStudent> filtered = globalRegisteredStudents.where((s) {
+      if (_searchQuery.isEmpty) return true;
+      return s.roomNo.toLowerCase().contains(_searchQuery.toLowerCase()) || 
+             s.name.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+    
+    // Sort by Room No then Name
+    filtered.sort((a, b) {
+      int rComp = (int.tryParse(a.roomNo) ?? 0).compareTo(int.tryParse(b.roomNo) ?? 0);
+      if (rComp != 0) return rComp;
+      return a.name.compareTo(b.name);
+    });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Manage Students", style: TextStyle(color: Colors.white)),
+        backgroundColor: brandOrange,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              decoration: InputDecoration(
+                labelText: 'Search by Room or Name',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onChanged: (val) => setState(() => _searchQuery = val),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: filtered.length,
+              itemBuilder: (ctx, i) {
+                final s = filtered[i];
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: ListTile(
+                    title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('Room: ${s.roomNo} | PIN: ${s.pin}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _showAddEditDialog(student: s),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            showDialog(
+                              context: context,
+                              builder: (dCtx) => AlertDialog(
+                                title: const Text('Confirm Delete'),
+                                content: Text('Delete ${s.name}?'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(dCtx), child: const Text('Cancel')),
+                                  TextButton(
+                                    onPressed: () {
+                                      globalRegisteredStudents.remove(s);
+                                      SyncService.pushStudents();
+                                      Navigator.pop(dCtx);
+                                    }, 
+                                    child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                                  ),
+                                ],
+                              )
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: brandOrange,
+        child: const Icon(Icons.add, color: Colors.white),
+        onPressed: () => _showAddEditDialog(),
       ),
     );
   }
