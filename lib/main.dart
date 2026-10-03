@@ -6799,7 +6799,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await supa.from('complaints').delete().neq('id', 'dummy');
       
       globalRegisteredStudents.clear();
-      // _loadFakeStudents(); // Restores all 160 names as unregistered
+      _loadFakeStudents(); // Restores all 160 names as unregistered
       globalAttendanceMap.clear();
       globalMonthlyPaid.clear();
       globalNotices.clear();
