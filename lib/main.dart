@@ -2043,6 +2043,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool isStudent = true;
+  bool _isCreatingPassword = false;
   bool isStudentPinVisible = false;
   bool isAdminPassVisible = false;
   String? selectedStudentName;
@@ -2194,6 +2195,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       String typedPin = _studentPinController.text.trim();
+      String hashedTypedPin = hashPassword(typedPin);
       if (typedPin.length != 8) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be 8 characters.'), backgroundColor: Colors.redAccent));
         return;
@@ -2228,10 +2230,21 @@ class _LoginScreenState extends State<LoginScreen> {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload your photo to continue.'), backgroundColor: Colors.redAccent));
             return;
           }
-        } else if (existingStudent.pin != typedPin) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wrong Password! Please enter your correct 8-character password.'), backgroundColor: Colors.redAccent));
-          return;
-        }
+              } else if (existingStudent.pin != typedPin && existingStudent.pin != hashedTypedPin) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Wrong Password! Please enter your correct 8-character password.',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+        return;
+      } else if (existingStudent.pin == typedPin) {
+        // Upgrade legacy plaintext to hash
+        existingStudent.pin = hashedTypedPin;
+      }
       } else {
         if (typedPin != _studentRePinController.text) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.redAccent));
@@ -2427,12 +2440,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (resetDone) {
         if (isStudentReq) {
           var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name.toLowerCase() == savedStudentName!.toLowerCase());
-          existingStudent.pin = newPassCtrl.text;
+          existingStudent.pin = hashPassword(newPassCtrl.text);
           await saveRegisteredStudents();
           SyncService.pushStudents();
         } else {
           var admin = globalAdmins.firstWhere((a) => a.phone == savedAdminPhone);
-          admin.pin = newPassCtrl.text;
+          admin.pin = hashPassword(newPassCtrl.text);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
           SyncService.pushAdmins();
@@ -2463,8 +2476,14 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+        bool needsEmailAndRePin = false;
+    try {
+      var s = globalRegisteredStudents.firstWhere((st) => st.roomNo == selectedRoom && st.name == selectedStudentName);
+      needsEmailAndRePin = s.pin.isEmpty;
+    } catch (e) {}
+
     // Email verification check
-    if (!hasSavedStudent && !_studentEmailVerified) {
+    if (!hasSavedStudent && needsEmailAndRePin && !_studentEmailVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please verify your email first by clicking "Verify Email"'),
@@ -2514,7 +2533,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.redAccent));
           return;
         }
-        existingStudent.pin = typedPin;
+        existingStudent.pin = hashedTypedPin;
         existingStudent.email = _studentEmailController.text.trim();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -2525,7 +2544,7 @@ class _LoginScreenState extends State<LoginScreen> {
             backgroundColor: Colors.green,
           ),
         );
-      } else if (existingStudent.pin != typedPin) {
+            } else if (existingStudent.pin != typedPin && existingStudent.pin != hashedTypedPin) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text(
@@ -2536,6 +2555,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         );
         return;
+      } else if (existingStudent.pin == typedPin) {
+        // Upgrade legacy plaintext to hash
+        existingStudent.pin = hashedTypedPin;
       }
       if (existingStudent.photoUrl == null || existingStudent.photoUrl!.isEmpty) {
         if (studentPhotoUrl == null) {
@@ -2590,7 +2612,7 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
       globalRegisteredStudents.add(
-        RegisteredStudent(typedName, selectedRoom!, studentPhotoUrl, typedPin, email: _studentEmailController.text.trim()),
+        RegisteredStudent(typedName, selectedRoom!, studentPhotoUrl, hashedTypedPin, email: _studentEmailController.text.trim()),
       );
       await saveRegisteredStudents();
       SyncService.pushStudents();
@@ -2665,6 +2687,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (admin != null) {
         if (admin.pin == hashPassword(pin) || admin.pin == pin) {
+          if (admin.pin == pin) {
+            // Upgrade legacy plaintext to hash
+            admin.pin = hashPassword(pin);
+            final p = await SharedPreferences.getInstance();
+            await p.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
+            SyncService.pushAdmins();
+          }
           // Success
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('last_admin_phone', admin.phone);
@@ -3073,9 +3102,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               )
                               .toList(),
-                    onChanged: (val) {
+                                        onChanged: (val) {
                       setState(() {
                         selectedStudentName = val;
+                        if (val != null && selectedRoom != null) {
+                           try {
+                             var s = globalRegisteredStudents.firstWhere((st) => st.roomNo == selectedRoom && st.name == val);
+                             _isCreatingPassword = s.pin.isEmpty;
+                           } catch (e) {
+                             _isCreatingPassword = false;
+                           }
+                        } else {
+                           _isCreatingPassword = false;
+                        }
                       });
                     },
                     validator: (val) =>
@@ -3098,7 +3137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ), // strictly limits to 8 characters
               ],
             ),
-              if (!hasSavedStudent) ...[
+              if (!hasSavedStudent && _isCreatingPassword) ...[
               const SizedBox(height: 20),
               _buildPasswordField(
                 controller: _studentRePinController,
@@ -8698,7 +8737,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
   void _showAddEditDialog({RegisteredStudent? student}) {
     final nameCtrl = TextEditingController(text: student?.name ?? '');
     final roomCtrl = TextEditingController(text: student?.roomNo ?? '');
-    final pinCtrl = TextEditingController(text: student?.pin ?? '');
+     
     
     showDialog(
       context: context,
@@ -8709,23 +8748,23 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
           children: [
             TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
             TextField(controller: roomCtrl, decoration: const InputDecoration(labelText: 'Room No')),
-            TextField(controller: pinCtrl, decoration: const InputDecoration(labelText: 'PIN')),
+             
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
-              if (nameCtrl.text.isEmpty || roomCtrl.text.isEmpty || pinCtrl.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name, Room No, and PIN are required')));
+              if (nameCtrl.text.isEmpty || roomCtrl.text.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name and Room No are required')));
                 return;
               }
               if (student == null) {
-                globalRegisteredStudents.add(RegisteredStudent(nameCtrl.text, roomCtrl.text, null, pinCtrl.text));
+                globalRegisteredStudents.add(RegisteredStudent(nameCtrl.text, roomCtrl.text, null, ''));
               } else {
                 int idx = globalRegisteredStudents.indexOf(student);
                 if (idx != -1) {
-                  globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, pinCtrl.text, email: student.email);
+                  globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, student.pin, email: student.email);
                 }
               }
               SyncService.pushStudents();
@@ -8781,7 +8820,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: ListTile(
                     title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('Room: ${s.roomNo} | PIN: ${s.pin}'),
+                    subtitle: Text('Room: ${s.roomNo} | PIN: ${s.pin == "" ? "Not Set" : "Set (Hidden)"}'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
