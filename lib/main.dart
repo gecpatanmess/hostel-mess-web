@@ -1007,7 +1007,14 @@ class SyncService {
             globalAttendanceMap[k.toString()] = rec;
           });
         }
-        
+
+        SyncService.dynamicPolls.clear();
+        if (data['dynamic_polls'] != null) {
+          (data['dynamic_polls'] as Map).forEach((k, v) {
+            dynamicPolls[k.toString()] = DynamicPoll.fromJson(v, k.toString());
+          });
+        }
+
         globalRegisteredStudents.clear();
         if (data['students'] != null) {
           for(var s in (data['students'] as List)) {
