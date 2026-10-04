@@ -3575,8 +3575,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   final TextEditingController _changeAdminPinCtrl = TextEditingController();
   final TextEditingController _newAdminEmailCtrl = TextEditingController();
 
-  bool _pollCheckL = false;
-  bool _pollCheckD = false;
+
   bool _lunchMsgVisible = true;
   bool _dinnerMsgVisible = true;
   Timer? _lunchMsgTimer;
