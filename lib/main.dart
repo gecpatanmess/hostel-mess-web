@@ -3881,9 +3881,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     
     // Filter active polls
     final polls = SyncService.dynamicPolls.values.where((p) {
-      final pollStart = DateTime.fromMillisecondsSinceEpoch(p.startTime);
-      bool isToday = pollStart.year == now.year && pollStart.month == now.month && pollStart.day == now.day;
-      return nowMs >= p.startTime && isToday;
+      bool isLocked = nowMs > p.endTime || !p.isActive;
+      return !isLocked;
     }).toList()
       ..sort((a, b) => b.startTime.compareTo(a.startTime));
     if (polls.isEmpty) {
