@@ -2967,15 +2967,32 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(width: 10),
                             Expanded(
-                              child: Text(
-                                _studentEmailVerified 
-                                  ? "Email verified successfully" 
-                                  : "OTP will be sent to your registered email ID",
-                                style: TextStyle(
-                                  color: _studentEmailVerified ? Colors.green.shade700 : brandGray,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                              child: Builder(
+                                builder: (context) {
+                                  String displayEmailText = "OTP will be sent to your registered email ID";
+                                  if (_studentEmailVerified) {
+                                    displayEmailText = "Email verified successfully";
+                                  } else {
+                                    if (selectedRoom != null && selectedStudentName != null) {
+                                      try {
+                                        final s = globalRegisteredStudents.firstWhere((st) => st.roomNo == selectedRoom && st.name == selectedStudentName);
+                                        if (s.email.isNotEmpty) {
+                                          displayEmailText = s.email;
+                                        }
+                                      } catch (e) {}
+                                    }
+                                  }
+                                  return Text(
+                                    displayEmailText,
+                                    style: TextStyle(
+                                      color: _studentEmailVerified ? Colors.green.shade700 : brandGray,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                },
                               ),
                             ),
                           ],
