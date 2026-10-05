@@ -2057,18 +2057,17 @@ class _LoginScreenState extends State<LoginScreen> {
     String? finalEmail;
 
     if (isStudentForm) {
-      if (existingStudent == null) {
-        var roomStudents = globalRegisteredStudents.where((s) => s.roomNo == selectedRoom!).toList();
-        try {
-          existingStudent = roomStudents.firstWhere((s) => s.name.toLowerCase() == selectedStudentName!.toLowerCase());
-        } catch (e) {}
-      }
+      RegisteredStudent? student;
+      var roomStudents = globalRegisteredStudents.where((s) => s.roomNo == selectedRoom!).toList();
+      try {
+        student = roomStudents.firstWhere((s) => s.name.toLowerCase() == selectedStudentName!.toLowerCase());
+      } catch (e) {}
       
-      if (existingStudent == null) {
+      if (student == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Student not found in database.'), backgroundColor: Colors.redAccent));
         return;
       }
-      finalEmail = existingStudent.email;
+      finalEmail = student.email;
       if (finalEmail == null || finalEmail.trim().isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Your email is not registered. Please contact Admin to add your email.'), backgroundColor: Colors.redAccent),
