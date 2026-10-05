@@ -2054,9 +2054,32 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
 
-    final email = isStudentForm
-        ? _studentEmailController.text.trim()
-        : _adminEmailController.text.trim();
+    String? finalEmail;
+
+    if (isStudentForm) {
+      if (existingStudent == null) {
+        var roomStudents = globalRegisteredStudents.where((s) => s.roomNo == selectedRoom!).toList();
+        try {
+          existingStudent = roomStudents.firstWhere((s) => s.name.toLowerCase() == selectedStudentName!.toLowerCase());
+        } catch (e) {}
+      }
+      
+      if (existingStudent == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Student not found in database.'), backgroundColor: Colors.redAccent));
+        return;
+      }
+      finalEmail = existingStudent.email;
+      if (finalEmail == null || finalEmail.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Your email is not registered. Please contact Admin to add your email.'), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+    } else {
+      finalEmail = _adminEmailController.text.trim();
+    }
+
+    final email = finalEmail.trim();
 
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2292,7 +2315,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
         existingStudent.pin = hashedTypedPin;
-        existingStudent.email = _studentEmailController.text.trim();
+        // Email is already in the database and handled via Admin
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -2926,40 +2949,38 @@ class _LoginScreenState extends State<LoginScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextFormField(
-                        controller: _studentEmailController,
-                        keyboardType: TextInputType.emailAddress,
-                        enabled: !_studentEmailVerified,
-                        validator: (value) => (value == null || value.trim().isEmpty)
-                            ? 'Please enter your email'
-                            : null,
-                        decoration: InputDecoration(
-                          hintText: "Enter your email",
-                          hintStyle: TextStyle(
-                            color: brandGray.withOpacity(0.7),
-                            fontSize: 14,
-                          ),
-                          prefixIcon: Icon(
-                            _studentEmailVerified ? Icons.verified : Icons.email_outlined,
-                            color: _studentEmailVerified ? Colors.green : brandGray,
-                            size: 22,
-                          ),
-                          filled: true,
-                          fillColor: _studentEmailVerified ? Colors.green.shade50 : brandInputBg,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide(
-                              color: _studentEmailVerified ? Colors.green : brandOrange,
-                              width: 1.5,
-                            ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: _studentEmailVerified ? Colors.green.shade50 : brandInputBg,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: _studentEmailVerified ? Colors.green : Colors.transparent,
+                            width: 1.5,
                           ),
                         ),
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: brandDark),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _studentEmailVerified ? Icons.verified : Icons.mark_email_unread_outlined,
+                              color: _studentEmailVerified ? Colors.green : brandGray,
+                              size: 22,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _studentEmailVerified 
+                                  ? "Email verified successfully" 
+                                  : "OTP will be sent to your registered email ID",
+                                style: TextStyle(
+                                  color: _studentEmailVerified ? Colors.green.shade700 : brandGray,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -2979,7 +3000,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: _isVerifyingEmail
                             ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : Text(
-                                _studentEmailVerified ? "Verified ✓" : "Verify",
+                                _studentEmailVerified ? "Verified \u2713" : "Verify",
                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                               ),
                       ),
@@ -3028,6 +3049,25 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
+            if (hasSavedStudent) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('last_student_name');
+                    await prefs.remove('last_room_no');
+                    await prefs.remove('userType');
+                    setState(() {
+                      hasSavedStudent = false;
+                      selectedStudentName = null;
+                      selectedRoom = null;
+                    });
+                  },
+                  child: const Text("Redirect to Login Page", style: TextStyle(color: brandGray, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -3286,6 +3326,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
+            if (hasSavedAdmin) ...[
+              const SizedBox(height: 16),
+              Center(
+                child: TextButton(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.remove('last_admin_name');
+                    await prefs.remove('last_admin_photo');
+                    await prefs.remove('identifier');
+                    await prefs.remove('userType');
+                    setState(() {
+                      hasSavedAdmin = false;
+                    });
+                  },
+                  child: const Text("Redirect to Login Page", style: TextStyle(color: brandGray, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -8548,6 +8606,16 @@ class AboutDevelopersScreen extends StatelessWidget {
           children: [
             // Logo Image
             Image.asset('assets/mdhk_logo.png', width: 300),
+            const SizedBox(height: 16),
+            const Text(
+              "STUDENTS OF GEC PATAN",
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 2.5,
+              ),
+            ),
             const SizedBox(height: 48),
           ],
         ),
@@ -8584,6 +8652,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
   void _showAddEditDialog({RegisteredStudent? student}) {
     final nameCtrl = TextEditingController(text: student?.name ?? '');
     final roomCtrl = TextEditingController(text: student?.roomNo ?? '');
+    final emailCtrl = TextEditingController(text: student?.email ?? '');
      
     
     showDialog(
@@ -8595,7 +8664,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
           children: [
             TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name')),
             TextField(controller: roomCtrl, decoration: const InputDecoration(labelText: 'Room No')),
-             
+            TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
           ],
         ),
         actions: [
@@ -8607,11 +8676,11 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                 return;
               }
               if (student == null) {
-                globalRegisteredStudents.add(RegisteredStudent(nameCtrl.text, roomCtrl.text, null, ''));
+                globalRegisteredStudents.add(RegisteredStudent(nameCtrl.text, roomCtrl.text, null, '', email: emailCtrl.text.trim()));
               } else {
                 int idx = globalRegisteredStudents.indexOf(student);
                 if (idx != -1) {
-                  globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, student.pin, email: student.email);
+                  globalRegisteredStudents[idx] = RegisteredStudent(nameCtrl.text, roomCtrl.text, student.photoUrl, student.pin, email: emailCtrl.text.trim());
                 }
               }
               await SyncService.pushStudents();
