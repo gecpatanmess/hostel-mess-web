@@ -2977,7 +2977,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                       try {
                                         final s = globalRegisteredStudents.firstWhere((st) => st.roomNo == selectedRoom && st.name == selectedStudentName);
                                         if (s.email.isNotEmpty) {
-                                          displayEmailText = s.email;
+                                          final email = s.email.trim();
+                                          if (email.contains('@')) {
+                                            final parts = email.split('@');
+                                            final local = parts[0];
+                                            final domain = parts[1];
+                                            if (local.length <= 2) {
+                                              displayEmailText = "${local.substring(0, 1)}***@$domain";
+                                            } else {
+                                              displayEmailText = "${local.substring(0, 2)}***${local.substring(local.length - 1)}@$domain";
+                                            }
+                                          } else {
+                                            displayEmailText = "Invalid email format";
+                                          }
                                         }
                                       } catch (e) {}
                                     }
