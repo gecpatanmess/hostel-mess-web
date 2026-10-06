@@ -122034,10 +122034,12 @@ p=q&&r.length!==0?A.brw(B.cG,new A.vF(r,1,m,B.tD),m):m
 r=!q||r.length===0?B.XH:m
 B.b.P(s,A.b([A.fO(m,A.ew(B.az,A.b([A.b7(m,r,B.j,m,m,new A.bz(B.oF,p,m,m,m,m,B.by),m,96,m,m,m,m,m,96),A.jC(2,A.b7(m,B.Yl,B.j,m,m,new A.bz(B.D,m,A.lx(B.i,3),m,m,m,B.by),m,32,m,m,m,m,m,32),m,m,m,2,m,m)],j),B.q,B.av,m),B.A,!1,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,m,new A.b6m(n),m,m,m,m,m,m,!1,B.b_),B.b5,B.aju],j))}else{r=new A.b6n(n).$0()
 B.b.P(s,A.b([A.b7(m,new A.b6o(n).$0(),B.j,m,m,new A.bz(B.bd,r,m,m,m,m,B.by),m,80,m,m,m,m,m,80)],j))}s.push(B.bw)
-if(n.f===B.dB&&!n.r&&n.x!=null)B.b.P(s,A.b([A.ag(n.x.a,m,m,m,m,B.dO,m,m,m),A.ag("Room: ",m,m,m,m,B.LQ,m,m,m)],j))
-else if(n.r||n.k4)B.b.P(s,A.b([B.aiZ],j))
+if(n.f===B.dB&&!n.r&&n.x!=null){r=n.x
+B.b.P(s,A.b([A.ag(r.a,m,m,m,m,B.dO,m,m,m),A.ag("Room: "+r.b,m,m,m,m,B.LQ,m,m,m)],j))}else if(n.r||n.k4)B.b.P(s,A.b([B.aiZ],j))
 else{r=n.id
-q=A.ag(r?"Room: ":"",m,m,m,m,B.LQ,m,m,m)
+if(r){q=n.k2
+q="Room: "+(q==null?"Unknown":q)}else q=""
+q=A.ag(q,m,m,m,m,B.LQ,m,m,m)
 if(r){r=n.k1
 if(r==null)r="Student"}else{r=n.x
 r=r==null?m:r.a
