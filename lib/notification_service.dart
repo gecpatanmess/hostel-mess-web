@@ -1,3 +1,4 @@
+import 'main.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,13 +20,13 @@ class NotificationService {
       final identifier = prefs.getString('identifier');
 
       if (userType == 'student' && identifier != null) {
-        final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+        final snap = await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students').get();
         if (snap.exists && snap.value != null) {
           if (snap.value is List) {
             List students = snap.value as List;
             for (int i = 0; i < students.length; i++) {
               if (students[i] != null && students[i] is Map && students[i]['name'] == identifier) {
-                await FirebaseDatabase.instance.ref('hostelData/students/$i/fcmToken').set(token);
+                await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students/$i/fcmToken').set(token);
                 print("Saved FCM token for student $identifier");
                 break;
               }
@@ -34,7 +35,7 @@ class NotificationService {
             Map students = snap.value as Map;
             for (var key in students.keys) {
               if (students[key] != null && students[key] is Map && students[key]['name'] == identifier) {
-                await FirebaseDatabase.instance.ref('hostelData/students/$key/fcmToken').set(token);
+                await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students/$key/fcmToken').set(token);
                 print("Saved FCM token for student $identifier");
                 break;
               }
@@ -43,8 +44,10 @@ class NotificationService {
         }
       } else if (userType == 'admin' && identifier != null) {
         String safePhone = identifier.replaceAll(RegExp(r'[.#$\[\]]'), '');
-        await FirebaseDatabase.instance.ref('hostelData/admin/fcmTokens/$safePhone').set(token);
-        print("Saved FCM token for admin $identifier");
+        // Save Admin token in BOTH folders so they get notifications from both Boys and Girls
+        await FirebaseDatabase.instance.ref('hostelData_boys/admin/fcmTokens/$safePhone').set(token);
+        await FirebaseDatabase.instance.ref('hostelData_girls/admin/fcmTokens/$safePhone').set(token);
+        print("Saved FCM token for admin $identifier in both sections");
       }
     } catch (e) {
       print("Error saving FCM token: $e");
@@ -98,7 +101,7 @@ class NotificationService {
     try {
       // 1. Get all student tokens
       List<String> tokens = [];
-      final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+      final snap = await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students').get();
       if (snap.exists && snap.value != null) {
         if (snap.value is List) {
           for (var s in (snap.value as List)) {
@@ -141,7 +144,7 @@ class NotificationService {
     try {
       // 1. Get all admin tokens
       List<String> tokens = [];
-      final snap = await FirebaseDatabase.instance.ref('hostelData/admin/fcmTokens').get();
+      final snap = await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/admin/fcmTokens').get();
       if (snap.exists && snap.value != null && snap.value is Map) {
         Map admins = snap.value as Map;
         for (var key in admins.keys) {
@@ -175,7 +178,7 @@ class NotificationService {
   static Future<void> sendPushNotificationToSpecificStudents(List<String> studentNames, String title, String body) async {
     try {
       List<String> tokens = [];
-      final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+      final snap = await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students').get();
       if (snap.exists && snap.value != null) {
         if (snap.value is List) {
           for (var s in (snap.value as List)) {

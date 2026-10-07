@@ -17,6 +17,7 @@ import 'export_service.dart';
 import 'splash_screen.dart';
 import 'package:flutter/services.dart'; // Added for inputFormatters
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:dio/dio.dart'; // For OTP/Email verification API calls
@@ -132,7 +133,7 @@ class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
     String dn = fallback['dinner']!;
 
     try {
-      final snap = await FirebaseDatabase.instance.ref('hostelData/weekly_template/$_selectedDay').get();
+      final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/weekly_template/$_selectedDay').get();
       if (snap.exists && snap.value != null) {
         final data = Map<String, dynamic>.from(snap.value as Map);
         if (data['breakfast'] != null && data['breakfast'].toString().trim().isNotEmpty) bf = data['breakfast'];
@@ -153,7 +154,7 @@ class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
   void _saveDayMenu() async {
     setState(() => _isLoading = true);
     try {
-      await FirebaseDatabase.instance.ref('hostelData/weekly_template/$_selectedDay').set({
+      await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/weekly_template/$_selectedDay').set({
         'breakfast': _bfCtrl.text.trim(),
         'lunch': _luCtrl.text.trim(),
         'dinner': _dnCtrl.text.trim(),
@@ -232,8 +233,8 @@ class ViewMenuTab extends StatelessWidget {
 
     return FutureBuilder<List<DataSnapshot>>(
       future: Future.wait([
-        FirebaseDatabase.instance.ref('hostelData/weekly_template/$weekDay').get(),
-        FirebaseDatabase.instance.ref('hostelData/daily_menus/$todayStr').get(),
+        FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/weekly_template/$weekDay').get(),
+        FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/daily_menus/$todayStr').get(),
       ]),
       builder: (context, snapshot) {
         String bf = defaultMenu['breakfast']!;
@@ -617,14 +618,17 @@ class AdminUser {
   String phone;
   String pin;
   String email;
-  AdminUser(this.phone, this.pin, {this.email = ''});
+  String name;
+  String? photoUrl;
+  AdminUser(this.phone, this.pin, {this.email = '', this.name = 'Admin', this.photoUrl});
 
-  Map<String, dynamic> toJson() => {'phone': phone, 'pin': pin, 'email': email};
-  factory AdminUser.fromJson(Map<String, dynamic> json) => AdminUser(json['phone'], json['pin'], email: json['email'] ?? '');
+  Map<String, dynamic> toJson() => {'phone': phone, 'pin': pin, 'email': email, 'name': name, 'photoUrl': photoUrl};
+  factory AdminUser.fromJson(Map<String, dynamic> json) => AdminUser(json['phone'], json['pin'], email: json['email'] ?? '', name: json['name'] ?? 'Admin', photoUrl: json['photoUrl']);
 }
 List<AdminUser> globalAdmins = [AdminUser("9586401483", "c984aed014aec7623a54f0591da07a85fd4b762d68a75e0ac3f3d7a45b6a1e4c")];
 
 List<RegisteredStudent> globalRegisteredStudents = [];
+String globalHostelMode = 'boys';
 
 final GlobalKey<NavigatorState> globalNavigatorKey = GlobalKey<NavigatorState>();
 int globalAppStartTime = DateTime.now().millisecondsSinceEpoch;
@@ -870,7 +874,7 @@ class SyncService {
   }
 
   static final _supabase = Supabase.instance.client;
-  static final _dbRef = FirebaseDatabase.instance.ref('hostelData');
+  static DatabaseReference get _dbRef => FirebaseDatabase.instance.ref('hostelData_$globalHostelMode');
   static bool _isSyncingIn = false;
   static bool _hasDownloadedOnce = false;
   static int _lastHash = 0;
@@ -878,6 +882,43 @@ class SyncService {
   static String _lastDownloadedMenuBase64 = "";
   static bool _switchCooldown = false;
   static bool _pollCooldown = false;
+
+  static StreamSubscription? _firebaseSub;
+  static StreamSubscription? _supaNoticesSub;
+  static StreamSubscription? _supaComplaintsSub;
+  static StreamSubscription? _supaMenuSub;
+
+  static Future<void> switchMode(String mode) async {
+    globalHostelMode = mode;
+    _hasDownloadedOnce = false;
+    _lastHash = 0;
+    
+    globalMenuFile = null;
+    globalMenuUrl = null;
+    globalMenuUploadBytes = null;
+    globalMenuIsPdf = false;
+    _lastDownloadedMenuBase64 = "";
+    _lastMenuPath = "";
+    globalNotices.clear();
+    globalComplaints.clear();
+    globalRegisteredStudents.clear();
+    globalAdmins.clear();
+    dynamicPolls.clear();
+    globalAttendanceMap.clear();
+    globalMonthlyPaid.clear();
+
+    await _firebaseSub?.cancel();
+    await _supaMenuSub?.cancel();
+    await _supaNoticesSub?.cancel();
+    await _supaComplaintsSub?.cancel();
+    _supabaseStreamsInitialized = false;
+    
+    listen();
+    globalSyncTrigger.value++; // Force UI refresh immediately on toggle
+    await fetchNow();
+  }
+
+
 
   static Map<String, DynamicPoll> dynamicPolls = {};
 
@@ -959,7 +1000,7 @@ class SyncService {
     try {
       globalNotices.removeWhere((n) => n.id == id);
       globalSyncTrigger.value++;
-      await _supabase.from('notices').delete().eq('id', id);
+      await _supabase.from('notices_$globalHostelMode').delete().eq('id', id);
       await _dbRef.child('notices_trigger').set(DateTime.now().millisecondsSinceEpoch);
     } catch(e) {
       print("Delete notice error: $e");
@@ -982,6 +1023,16 @@ class SyncService {
       final snap = await _dbRef.get();
       if (snap.exists && snap.value != null) {
         Map<dynamic, dynamic> rawData = snap.value as Map<dynamic, dynamic>;
+        
+        try {
+          final menuData = await _supabase.from('menu_$globalHostelMode').select().eq('id', 1);
+          if (menuData.isNotEmpty) {
+            globalMenuUrl = menuData.first['image_url'];
+            globalMenuIsPdf = (globalMenuUrl ?? '').toLowerCase().contains('.pdf');
+          } else {
+            globalMenuUrl = null;
+          }
+        } catch(e) {}
         Map<String, dynamic> data = jsonDecode(jsonEncode(rawData));
         
         if (data.containsKey('admins') && data['admins'] != null) {
@@ -1028,13 +1079,13 @@ class SyncService {
       }
 
       // 2. Fetch from Supabase
-      final noticesData = await _supabase.from('notices').select();
+      final noticesData = await _supabase.from('notices_$globalHostelMode').select();
       globalNotices.clear();
       for(var n in noticesData) {
         globalNotices.add(NoticeItem(n['id'].toString(), n['title'], n['message'], DateTime.parse(n['date'])));
       }
 
-      final complaintsData = await _supabase.from('complaints').select();
+      final complaintsData = await _supabase.from('complaints_$globalHostelMode').select();
       globalComplaints.clear();
       for(var c in complaintsData) {
         String? sPhoto = null;
@@ -1056,7 +1107,7 @@ class SyncService {
   static Future<void> pushNotices() async {
     try {
       for(var n in globalNotices) {
-        await _supabase.from('notices').upsert({
+        await _supabase.from('notices_$globalHostelMode').upsert({
           'id': n.id,
           'title': n.title,
           'message': n.message,
@@ -1075,7 +1126,7 @@ class SyncService {
     try {
       for(var c in globalComplaints) {
         String photoUrl = c.complaintImageUrl ?? "";
-        await _supabase.from('complaints').upsert({
+        await _supabase.from('complaints_$globalHostelMode').upsert({
           'id': c.id,
           'title': c.title,
           'description': c.description,
@@ -1132,21 +1183,22 @@ class SyncService {
 
   /// Push only menu to Firebase
   static Future<void> pushMenu() async {
-    if (globalMenuFile == null) {
+    if (globalMenuFile == null && globalMenuUploadBytes == null) {
       try {
         await _dbRef.child('menu').remove();
-        await _supabase.from('menu').delete().eq('id', 1);
+        await _supabase.from('menu_$globalHostelMode').delete().eq('id', 1);
         globalSyncTrigger.value++;
     } catch(e){}
       return;
     }
     try {
-      final bytes = await globalMenuFile!.readAsBytes();
-      final path = 'menu_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final bytes = globalMenuUploadBytes ?? await globalMenuFile!.readAsBytes();
+      String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
+      final path = 'menu_${globalHostelMode}_${DateTime.now().millisecondsSinceEpoch}.$ext';
       await _supabase.storage.from('mess_images').uploadBinary(path, bytes);
       final url = _supabase.storage.from('mess_images').getPublicUrl(path);
       
-      await _supabase.from('menu').upsert({
+      await _supabase.from('menu_$globalHostelMode').upsert({
         'id': 1,
         'image_url': url,
         'updated_at': DateTime.now().toIso8601String()
@@ -1155,6 +1207,7 @@ class SyncService {
       await _dbRef.child('menu').remove();
     } catch(e) {
       print("Push menu error: $e");
+      throw Exception("Supabase Upload Error: $e");
     }
   }
 
@@ -1256,11 +1309,39 @@ class SyncService {
   
   static bool _supabaseStreamsInitialized = false;
 
-  static void initSupabaseStreams() {
+    static void initSupabaseStreams() {
     if (_supabaseStreamsInitialized) return;
     _supabaseStreamsInitialized = true;
     
-    _supabase.from('notices').stream(primaryKey: ['id']).listen((data) {
+    _supaMenuSub = _supabase.from('menu_$globalHostelMode').stream(primaryKey: ['id']).listen((data) async {
+      if (data.isNotEmpty) {
+        String imgUrl = data.first['image_url'] ?? '';
+        globalMenuUrl = imgUrl;
+        globalMenuIsPdf = imgUrl.toLowerCase().contains('.pdf');
+        
+        if (imgUrl.isNotEmpty) {
+            try {
+               final response = await _supabase.storage.from('mess_images').download(imgUrl.split('/').last);
+               if(!kIsWeb) {
+                   final dir = await getApplicationDocumentsDirectory();
+                   File mFile = File('${dir.path}/mess_menu_supabase.jpg');
+                   await mFile.writeAsBytes(response);
+                   globalMenuFile = mFile;
+               } else {
+                   globalMenuUploadBytes = response;
+               }
+            } catch(e) {}
+        } else {
+            globalMenuFile = null;
+        }
+      } else {
+        globalMenuUrl = null;
+        globalMenuFile = null;
+      }
+      globalSyncTrigger.value++;
+    });
+    
+    _supaNoticesSub = _supabase.from('notices_$globalHostelMode').stream(primaryKey: ['id']).listen((data) {
       globalNotices.clear();
       for(var n in data) {
         globalNotices.add(NoticeItem(n['id'].toString(), n['title'], n['message'], DateTime.parse(n['date'])));
@@ -1268,7 +1349,7 @@ class SyncService {
       globalSyncTrigger.value++;
     });
 
-    _supabase.from('complaints').stream(primaryKey: ['id']).listen((data) async {
+    _supaComplaintsSub = _supabase.from('complaints_$globalHostelMode').stream(primaryKey: ['id']).listen((data) async {
       globalComplaints.clear();
       for(var c in data) {
         String? sPhoto = null;
@@ -1282,35 +1363,11 @@ class SyncService {
       }
       globalSyncTrigger.value++;
     });
-
-    _supabase.from('menu').stream(primaryKey: ['id']).listen((data) async {
-       if (data.isNotEmpty) {
-         String imgUrl = data.first['image_url'] ?? '';
-         if (imgUrl.isNotEmpty) {
-            try {
-               final response = await _supabase.storage.from('mess_images').download(imgUrl.split('/').last);
-               if(kIsWeb) return;
-               final dir = await getApplicationDocumentsDirectory();
-               File mFile = File('${dir.path}/mess_menu_supabase.jpg');
-               await mFile.writeAsBytes(response);
-               globalMenuFile = mFile;
-               globalSyncTrigger.value++;
-            } catch(e) {}
-         } else {
-           globalMenuFile = null;
-           globalSyncTrigger.value++;
-         }
-       } else {
-         globalMenuFile = null;
-         globalSyncTrigger.value++;
-       }
-    });
   }
 
   static void listen() {
-    initSupabaseStreams();
-
-    _dbRef.onValue.listen((event) async {
+    _firebaseSub?.cancel();
+    _firebaseSub = _dbRef.onValue.listen((event) async {
       final snap = event.snapshot;
       if (snap.value == null) return;
       
@@ -1375,25 +1432,7 @@ class SyncService {
           }
         }
 
-        if (data['menu_trigger'] != null || data['notices_trigger'] != null) {
-          // If triggers changed, force fetch Supabase data directly
-          _supabase.from('menu').select().eq('id', 1).then((resp) {
-            if (resp.isNotEmpty) {
-               globalMenuUrl = resp.first['image_url'];
-               globalMenuIsPdf = (globalMenuUrl ?? '').toLowerCase().contains('.pdf');
-            } else {
-               globalMenuUrl = null;
-            }
-            globalSyncTrigger.value++;
-          });
-          _supabase.from('notices').select().then((resp) {
-            globalNotices.clear();
-            for(var n in resp) {
-              globalNotices.add(NoticeItem(n['id'].toString(), n['title'], n['message'], DateTime.parse(n['date'])));
-            }
-            globalSyncTrigger.value++;
-          });
-        }
+        
 
         if (data['switches'] != null && !_switchCooldown) {
           globalEntryL = data['switches']['globalEntryL'] ?? false;
@@ -1799,9 +1838,16 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
+enum AuthStage { identifier, standardPassword, adminEmail, newPassword, personalPassword, otp }
+
 class _LoginScreenState extends State<LoginScreen> {
   bool isStudent = true;
   bool _isCreatingPassword = false;
+  AuthStage _authStage = AuthStage.identifier;
+  bool _isAdminFlow = false;
+  AdminUser? _matchedAdmin;
+  RegisteredStudent? _matchedStudent;
+  String _adminVerificationId = '';
   bool isStudentPinVisible = false;
   bool isAdminPassVisible = false;
   String? selectedStudentName;
@@ -1912,32 +1958,65 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+
+  String? _validatePassword(String password) {
+    if (password.length < 8) return 'Password must be at least 8 characters';
+    if (password.length > 16) return 'Password must be at most 16 characters';
+    if (!RegExp(r'[A-Z]').hasMatch(password)) return 'Must contain at least 1 uppercase letter';
+    if (!RegExp(r'[0-9]').hasMatch(password)) return 'Must contain at least 1 number';
+    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) return 'Must contain at least 1 special character';
+    return null;
+  }
+
   Future<void> _pickImage(bool isStudentForm) async {
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 40,
-        maxWidth: 800,
+        imageQuality: 80,
+        maxWidth: 1200,
       );
-      if (image != null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading photo... Please wait.'), duration: Duration(seconds: 2)));
-        final bytes = await image.readAsBytes();
-        final url = await SyncService.uploadImage(bytes);
-        if (url != null) {
-          setState(() {
-            if (isStudentForm) {
-              studentPhotoUrl = url;
-            } else {
-              adminPhotoUrl = url;
-            }
-          });
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload successful!')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed (Storage Error). Check bucket policies.')));
-        }
+      if (image == null) return;
+      
+      // Circular crop
+      CroppedFile? croppedFile = await ImageCropper().cropImage(
+        sourcePath: image.path,
+        
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Photo',
+            toolbarColor: const Color(0xFFE86A33),
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+          ),
+          IOSUiSettings(title: 'Crop Photo'),
+          WebUiSettings(
+            context: context,
+            presentStyle: WebPresentStyle.dialog,
+            size: const CropperSize(width: 400, height: 400),
+          ),
+        ],
+      );
+      if (croppedFile == null) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Uploading photo... Please wait.'), duration: Duration(seconds: 2)));
+      final bytes = await croppedFile.readAsBytes();
+      final url = await SyncService.uploadImage(bytes);
+      if (url != null) {
+        setState(() {
+          if (isStudentForm) {
+            studentPhotoUrl = url;
+          } else {
+            adminPhotoUrl = url;
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload successful!')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed (Storage Error). Check bucket policies.')));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ${e.toString()}')));
     }
   }
 
@@ -1960,7 +2039,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       
       try {
-        final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+        final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students').get();
         if (snap.exists && snap.value != null) {
           globalRegisteredStudents.clear();
           for(var s in (snap.value as List)) {
@@ -2145,25 +2224,37 @@ class _LoginScreenState extends State<LoginScreen> {
     String? targetIdentifier;
     
     if (isStudentReq) {
-      targetIdentifier = hasSavedStudent ? savedStudentName : selectedStudentName;
+      // Use matched student from unified login or saved credentials
+      if (_matchedStudent != null) {
+        emailToSend = _matchedStudent!.email;
+        targetIdentifier = _matchedStudent!.name;
+      } else if (hasSavedStudent && savedStudentName != null) {
+        targetIdentifier = savedStudentName;
+        try {
+          var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name == targetIdentifier);
+          emailToSend = existingStudent.email;
+        } catch (e) {}
+      }
       if (targetIdentifier == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select your name first.")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cannot identify account for password reset.")));
         return;
       }
-      try {
-        var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name == targetIdentifier);
-        emailToSend = existingStudent.email;
-      } catch (e) {}
     } else {
-      targetIdentifier = hasSavedAdmin ? savedAdminPhone : _adminMobileController.text.trim();
+      // Admin flow
+      if (_matchedAdmin != null) {
+        emailToSend = _matchedAdmin!.email;
+        targetIdentifier = _matchedAdmin!.phone;
+      } else if (hasSavedAdmin && savedAdminPhone != null) {
+        targetIdentifier = savedAdminPhone;
+        try {
+          var admin = globalAdmins.firstWhere((a) => a.phone == targetIdentifier);
+          emailToSend = admin.email;
+        } catch(e) {}
+      }
       if (targetIdentifier == null || targetIdentifier.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter your mobile number first.")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cannot identify account for password reset.")));
         return;
       }
-      try {
-        var admin = globalAdmins.firstWhere((a) => a.phone == targetIdentifier);
-        emailToSend = admin.email;
-      } catch(e) {}
     }
     
     if (emailToSend == null || emailToSend.isEmpty) {
@@ -2176,55 +2267,102 @@ class _LoginScreenState extends State<LoginScreen> {
       // Let them reset the password
       TextEditingController newPassCtrl = TextEditingController();
       TextEditingController rePassCtrl = TextEditingController();
+      bool isForgotPinVisible = false;
+      bool isForgotRePinVisible = false;
       bool resetDone = await showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text("Reset Password"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: newPassCtrl,
-                inputFormatters: [LengthLimitingTextInputFormatter(8)],
-                decoration: const InputDecoration(hintText: "Enter 8-digit new password"),
+        builder: (ctx) => StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              backgroundColor: brandInputBg,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Text("Reset Password", style: TextStyle(fontWeight: FontWeight.bold, color: brandDark)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("New Password", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: newPassCtrl,
+                      obscureText: !isForgotPinVisible,
+                      maxLength: 16,
+                      onChanged: (val) => setStateDialog(() {}),
+                      decoration: InputDecoration(
+                        hintText: "Create password (8-16 chars)",
+                        prefixIcon: const Icon(Icons.lock_outline, color: brandGray, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(isForgotPinVisible ? Icons.visibility : Icons.visibility_off, color: brandGray, size: 20),
+                          onPressed: () => setStateDialog(() => isForgotPinVisible = !isForgotPinVisible),
+                        ),
+                        filled: true, fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        counterText: "",
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    _buildPasswordHints(newPassCtrl.text),
+                    const SizedBox(height: 16),
+                    const Text("Confirm Password", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: rePassCtrl,
+                      obscureText: !isForgotRePinVisible,
+                      maxLength: 16,
+                      onChanged: (val) => setStateDialog(() {}),
+                      decoration: InputDecoration(
+                        hintText: "Re-enter password",
+                        prefixIcon: const Icon(Icons.lock_outline, color: brandGray, size: 20),
+                        suffixIcon: IconButton(
+                          icon: Icon(isForgotRePinVisible ? Icons.visibility : Icons.visibility_off, color: brandGray, size: 20),
+                          onPressed: () => setStateDialog(() => isForgotRePinVisible = !isForgotRePinVisible),
+                        ),
+                        filled: true, fillColor: Colors.white,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        counterText: "",
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: rePassCtrl,
-                inputFormatters: [LengthLimitingTextInputFormatter(8)],
-                decoration: const InputDecoration(hintText: "Re-enter password"),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
-            ElevatedButton(
-              onPressed: () {
-                if (newPassCtrl.text.length != 8) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Password must be exactly 8 characters")));
-                  return;
-                }
-                if (newPassCtrl.text != rePassCtrl.text) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Passwords do not match")));
-                  return;
-                }
-                Navigator.pop(ctx, true);
-              },
-              child: const Text("Save"),
-            )
-          ],
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel", style: TextStyle(color: brandGray))),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandOrange,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () {
+                    String? validationError = _validatePassword(newPassCtrl.text);
+                    if (validationError != null) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(validationError)));
+                      return;
+                    }
+                    if (newPassCtrl.text != rePassCtrl.text) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text("Passwords do not match!")));
+                      return;
+                    }
+                    Navigator.pop(ctx, true);
+                  },
+                  child: const Text("Save"),
+                )
+              ],
+            );
+          }
         )
       ) ?? false;
       
       if (resetDone) {
         if (isStudentReq) {
-          var existingStudent = globalRegisteredStudents.firstWhere((s) => s.name.toLowerCase() == savedStudentName!.toLowerCase());
+          var existingStudent = _matchedStudent ?? globalRegisteredStudents.firstWhere((s) => s.name.toLowerCase() == (savedStudentName ?? '').toLowerCase());
           existingStudent.pin = hashPassword(newPassCtrl.text);
           await saveRegisteredStudents();
           await SyncService.pushStudents();
         } else {
-          var admin = globalAdmins.firstWhere((a) => a.phone == savedAdminPhone);
+          var admin = _matchedAdmin ?? globalAdmins.firstWhere((a) => a.phone == (savedAdminPhone ?? ''));
           admin.pin = hashPassword(newPassCtrl.text);
           final prefs = await SharedPreferences.getInstance();
           await prefs.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
@@ -2279,7 +2417,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     // Explicitly fetch latest from Firebase to prevent Web vs App mismatch bugs
     try {
-      final snap = await FirebaseDatabase.instance.ref('hostelData/students').get();
+      final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students').get();
       if (snap.exists && snap.value != null) {
         globalRegisteredStudents.clear();
         for(var s in (snap.value as List)) {
@@ -2541,10 +2679,12 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 24),
-              const FittedBox(
+              FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  "Hostel Mess Management",
+                  (_authStage != AuthStage.identifier || hasSavedStudent || hasSavedAdmin) 
+                      ? "${globalHostelMode == 'boys' ? 'Boys' : 'Girls'} Hostel Mess" 
+                      : "Hostel Mess Management",
                   style: TextStyle(
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
@@ -2566,109 +2706,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 32),
 
-              if (!hasSavedStudent && !hasSavedAdmin)
-                Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: brandInputBg,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => isStudent = true),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            color: isStudent
-                                ? Colors.white
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: isStudent
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.04),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ]
-                                : [],
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.school,
-                                size: 20,
-                                color: isStudent ? brandOrange : brandGray,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "Student",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: isStudent
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  color: isStudent ? brandOrange : brandGray,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => isStudent = false),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          decoration: BoxDecoration(
-                            color: !isStudent
-                                ? Colors.white
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: !isStudent
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.04),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
-                                    ),
-                                  ]
-                                : [],
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.security,
-                                size: 20,
-                                color: !isStudent ? brandOrange : brandGray,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "Admin",
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: !isStudent
-                                      ? FontWeight.w600
-                                      : FontWeight.w500,
-                                  color: !isStudent ? brandOrange : brandGray,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
+                            const SizedBox(height: 28),
 
               // Form
               AnimatedSwitcher(
@@ -2685,7 +2723,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   );
                 },
-                child: isStudent ? _buildStudentPortal() : _buildAdminPortal(),
+                child: _buildStudentPortal(),
               ),
               const SizedBox(height: 32),
               Center(
@@ -2705,25 +2743,337 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildStudentPortal() {
-    bool isRegisteredStudent = false;
-    String? existingPhoto;
-    if (selectedRoom != null && selectedStudentName != null) {
-      try {
-        final st = globalRegisteredStudents.firstWhere(
-          (s) => s.roomNo == selectedRoom && s.name == selectedStudentName
-        );
-        if (st.pin.isNotEmpty) {
-          isRegisteredStudent = true;
-          existingPhoto = st.photoUrl;
-        }
-      } catch(e) {}
-    }
-    bool canUploadPhoto = !isRegisteredStudent || (existingPhoto == null || existingPhoto.isEmpty);
-    String? displayPhotoUrl = (isRegisteredStudent && !canUploadPhoto) ? existingPhoto : studentPhotoUrl;
 
+  Future<void> _verifyIdentifierStage() async {
+    String input = _studentEmailController.text.trim();
+    if (input.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter Email or Mobile Number')));
+      return;
+    }
+    setState(() => _isVerifyingEmail = true);
+    
+    bool isNumeric = RegExp(r'^[0-9]+$').hasMatch(input) && input.length == 10;
+    
+    if (isNumeric) {
+      // === ADMIN FLOW ===
+      _isAdminFlow = true;
+      _matchedAdmin = null;
+      
+      // Search BOTH boys and girls admin databases
+      for (String mode in ['boys', 'girls']) {
+        try {
+          final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/admins').get();
+          if (snap.exists && snap.value != null) {
+            List<AdminUser> tempAdmins = [];
+            for (var a in (snap.value as List)) {
+              if (a != null) {
+                tempAdmins.add(AdminUser.fromJson(Map<String, dynamic>.from(a)));
+              }
+            }
+            for (var a in tempAdmins) {
+              if (a.phone == input) {
+                _matchedAdmin = a;
+                globalHostelMode = mode;
+                globalAdmins = tempAdmins;
+                break;
+              }
+            }
+          }
+        } catch (e) {}
+        if (_matchedAdmin != null) break;
+      }
+      
+      if (_matchedAdmin == null) {
+        setState(() => _isVerifyingEmail = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Email format')));
+        return;
+      }
+      
+      setState(() {
+        _isVerifyingEmail = false;
+        if (_matchedAdmin!.pin.isNotEmpty && _matchedAdmin!.pin != 'Hostel@123' && _matchedAdmin!.pin != hashPassword('Hostel@123')) {
+           _authStage = AuthStage.personalPassword;
+           adminPhotoUrl = _matchedAdmin!.photoUrl;
+        } else {
+           _authStage = AuthStage.standardPassword;
+        }
+      });
+      return;
+    }
+
+    // === STUDENT FLOW ===
+    _isAdminFlow = false;
+    String email = input.toLowerCase();
+    if (!email.contains('@')) {
+      setState(() => _isVerifyingEmail = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Email format')));
+      return;
+    }
+    
+    // Search BOTH boys and girls student databases
+    _matchedStudent = null;
+    for (String mode in ['boys', 'girls']) {
+      try {
+        final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/students').get();
+        if (snap.exists && snap.value != null) {
+          List<RegisteredStudent> tempStudents = [];
+          for (var s in (snap.value as List)) {
+            if (s != null) {
+              var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(s));
+              if (st.isValid) tempStudents.add(st);
+            }
+          }
+          for (var s in tempStudents) {
+            if (s.email != null && s.email.toLowerCase() == email) {
+              _matchedStudent = s;
+              globalHostelMode = mode;
+              globalRegisteredStudents = tempStudents;
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+      if (_matchedStudent != null) break;
+    }
+    
+    if (_matchedStudent == null) {
+      setState(() => _isVerifyingEmail = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email not registered. Please contact Admin.')));
+      return;
+    }
+    
+    if (_matchedStudent!.pin.isNotEmpty) {
+      setState(() {
+        _isVerifyingEmail = false;
+        _authStage = AuthStage.personalPassword;
+        studentPhotoUrl = _matchedStudent!.photoUrl;
+        selectedStudentName = _matchedStudent!.name;
+        selectedRoom = _matchedStudent!.roomNo;
+      });
+    } else {
+      Map<String, dynamic> res = await EmailOtpService.sendOtp(email);
+      bool sent = res['success'] == true;
+      setState(() => _isVerifyingEmail = false);
+      if (sent) {
+        bool verified = await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => _OtpVerificationDialog(email: email),
+        ) ?? false;
+        if (verified) {
+          setState(() {
+            _authStage = AuthStage.newPassword;
+            selectedStudentName = _matchedStudent!.name;
+            selectedRoom = _matchedStudent!.roomNo;
+          });
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to send OTP.')));
+      }
+    }
+  }
+
+  Future<void> _handleUnifiedAction() async {
+    String typedPin = _studentPinController.text.trim();
+    
+    if (_isAdminFlow) {
+      if (_authStage == AuthStage.standardPassword) {
+        if (typedPin != 'Hostel@123') {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Standard Password!')));
+          return;
+        }
+        // Standard password correct -> show email input
+        setState(() {
+          _authStage = AuthStage.adminEmail;
+          _studentPinController.clear();
+        });
+      } else if (_authStage == AuthStage.adminEmail) {
+        // Verify admin email matches
+        String enteredEmail = _adminEmailController.text.trim().toLowerCase();
+        if (enteredEmail.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter your email')));
+          return;
+        }
+        if (_matchedAdmin!.email.toLowerCase() != enteredEmail) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email does not match. Access denied.')));
+          return;
+        }
+        // Email matches -> send OTP
+        setState(() => _isVerifyingEmail = true);
+        Map<String, dynamic> res = await EmailOtpService.sendOtp(enteredEmail);
+        bool sent = res['success'] == true;
+        setState(() => _isVerifyingEmail = false);
+        if (sent) {
+          bool verified = await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => _OtpVerificationDialog(email: enteredEmail),
+          ) ?? false;
+          if (verified) {
+            if (_matchedAdmin!.pin.isNotEmpty && _matchedAdmin!.pin != 'Hostel@123' && _matchedAdmin!.pin != hashPassword('Hostel@123')) {
+              setState(() {
+                _authStage = AuthStage.personalPassword;
+                adminPhotoUrl = _matchedAdmin!.photoUrl;
+                _studentPinController.clear();
+              });
+            } else {
+              setState(() {
+                _authStage = AuthStage.newPassword;
+                _studentPinController.clear();
+              });
+            }
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to send OTP.')));
+        }
+      } else if (_authStage == AuthStage.personalPassword) {
+        String hashed = hashPassword(typedPin);
+        if (_matchedAdmin!.pin == typedPin || _matchedAdmin!.pin == hashed) {
+          await _finalizeAdminLogin(_matchedAdmin!);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Password!')));
+        }
+      } else if (_authStage == AuthStage.newPassword) {
+         String? validationError = _validatePassword(typedPin);
+         if (validationError != null) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(validationError)));
+            return;
+         }
+         if (typedPin != _studentRePinController.text) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
+            return;
+         }
+         if (studentPhotoUrl == null || studentPhotoUrl!.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload photo first!')));
+            return;
+         }
+         _matchedAdmin!.pin = hashPassword(typedPin);
+         _matchedAdmin!.photoUrl = studentPhotoUrl;
+         
+         int idx = globalAdmins.indexWhere((a) => a.phone == _matchedAdmin!.phone);
+         if (idx != -1) globalAdmins[idx] = _matchedAdmin!;
+         
+         final p = await SharedPreferences.getInstance();
+         await p.setStringList('globalAdmins', globalAdmins.map((a) => jsonEncode(a.toJson())).toList());
+         await SyncService.pushAdmins();
+         
+         await _finalizeAdminLogin(_matchedAdmin!);
+      }
+      return;
+    }
+    
+    // === STUDENT LOGIC ===
+    if (_authStage == AuthStage.newPassword) {
+      String? validationError = _validatePassword(typedPin);
+      if (validationError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(validationError)));
+        return;
+      }
+      if (typedPin != _studentRePinController.text) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
+        return;
+      }
+      if (studentPhotoUrl == null || studentPhotoUrl!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload your photo to complete registration.')));
+        return;
+      }
+      
+      _matchedStudent!.pin = hashPassword(typedPin);
+      _matchedStudent!.photoUrl = studentPhotoUrl;
+      
+      int idx = globalRegisteredStudents.indexWhere((s) => s.name == _matchedStudent!.name && s.roomNo == _matchedStudent!.roomNo);
+      if (idx != -1) {
+        globalRegisteredStudents[idx] = _matchedStudent!;
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saving profile...')));
+      await saveRegisteredStudents();
+      await SyncService.pushStudents();
+      
+      await _finalizeStudentLogin(_matchedStudent!);
+    } else {
+      // personalPassword stage
+      String hashed = hashPassword(typedPin);
+      RegisteredStudent? target = _matchedStudent;
+      
+      if (hasSavedStudent) {
+        try {
+          target = globalRegisteredStudents.firstWhere((s) => s.name == savedStudentName && s.roomNo == savedStudentRoom);
+        } catch(e) {}
+      }
+      
+      if (target != null && (target.pin == typedPin || target.pin == hashed)) {
+        if (target.pin == typedPin) {
+          target.pin = hashed;
+          int idx = globalRegisteredStudents.indexWhere((s) => s.name == target!.name && s.roomNo == target.roomNo);
+          if (idx != -1) globalRegisteredStudents[idx] = target;
+          await saveRegisteredStudents();
+          await SyncService.pushStudents();
+        }
+        await _finalizeStudentLogin(target);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Password')));
+      }
+    }
+  }
+
+
+  Future<void> _finalizeStudentLogin(RegisteredStudent student) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_student_name', student.name);
+    await prefs.setString('last_student_room', student.roomNo);
+    await prefs.setString('last_student_photo', student.photoUrl ?? '');
+    await prefs.setString('userType', 'student');
+    await prefs.setString('identifier', student.name);
+    await prefs.setString('photoPath', student.photoUrl ?? '');
+    await prefs.setString('extraInfo', student.roomNo);
+    
+    // CRITICAL FIX: Restart streams for the correct hostel mode before navigating
+    await SyncService.switchMode(globalHostelMode);
+    
+    await NotificationService.saveToken();
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StudentDashboardScreen(
+          photoUrl: student.photoUrl,
+          name: student.name,
+          roomNo: student.roomNo,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _finalizeAdminLogin(AdminUser admin) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_admin_phone', admin.phone);
+    await prefs.setString('last_admin_name', admin.name);
+    await prefs.setString('last_admin_photo', admin.photoUrl ?? '');
+    await prefs.setString('userType', 'admin');
+    await prefs.setString('identifier', admin.phone);
+    await prefs.setString('photoPath', admin.photoUrl ?? '');
+    await prefs.setString('extraInfo', admin.name);
+    
+    // CRITICAL FIX: Restart streams for the correct hostel mode before navigating
+    await SyncService.switchMode(globalHostelMode);
+    
+    await NotificationService.saveToken();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AdminDashboardScreen(
+          photoUrl: admin.photoUrl,
+          name: admin.name,
+          phone: admin.phone,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudentPortal() {
     return Container(
-      key: const ValueKey("StudentPortal"),
+      key: const ValueKey("UnifiedLogin"),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2743,358 +3093,237 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const Row(
               children: [
-                Icon(Icons.restaurant, color: brandOrange, size: 22),
+                Icon(Icons.login, color: brandOrange, size: 22),
                 SizedBox(width: 10),
                 Text(
-                  "Student Portal",
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: brandDark,
-                  ),
+                  "Login",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: brandDark),
                 ),
               ],
             ),
             const SizedBox(height: 28),
-            Center(
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: canUploadPhoto ? () => _pickImage(true) : () {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You cannot change your photo after registration.'), backgroundColor: brandOrange));
-                    },
-                    child: Stack(
-                      children: [
-                        Container(
-                          width: 96,
-                          height: 96,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFDE9D2),
-                            shape: BoxShape.circle,
-                            image: (displayPhotoUrl != null && displayPhotoUrl.isNotEmpty) ? DecorationImage(image: NetworkImage(displayPhotoUrl), fit: BoxFit.cover)
-                                : null,
-                          ),
-                          child: (displayPhotoUrl == null || displayPhotoUrl.isEmpty)
-                              ? const Icon(
-                                  Icons.camera_alt_outlined,
-                                  color: brandOrange,
-                                  size: 38,
-                                )
-                              : null,
-                        ),
-                        if (canUploadPhoto)
-                          Positioned(
-                          bottom: 2,
-                          right: 2,
-                          child: Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: brandOrange,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: Colors.white,
-                                width: 3.0,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: brandOrange.withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    "Upload Student Photo",
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: brandDark,
-                    ),
-                  ),
-                ],
+
+            // === STAGE: IDENTIFIER (Email or Mobile) ===
+            if (_authStage == AuthStage.identifier && !hasSavedStudent && !hasSavedAdmin) ...[
+              const Text("Registered Email", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _studentEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: "Enter registered email",
+                  prefixIcon: const Icon(Icons.email_outlined, color: brandGray, size: 20),
+                  filled: true,
+                  fillColor: brandInputBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                ),
               ),
-            ),
-            const SizedBox(height: 32),
-            if (hasSavedStudent) ...[
-                Center(child: Text(savedStudentName ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
-                Center(child: Text("Room: ${savedStudentRoom ?? ''}", style: const TextStyle(fontSize: 14, color: brandGray))),
-              ],
-              if (!hasSavedStudent) ...[
-              _buildDropdownField(),
-            const SizedBox(height: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Full Name",
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: brandDark,
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isVerifyingEmail ? null : _verifyIdentifierStage,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandOrange,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
+                  child: _isVerifyingEmail 
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text("Next", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
-                const SizedBox(height: 8),
-                Container(
-                  decoration: BoxDecoration(
-                    color: brandInputBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: DropdownButtonFormField<String>(isExpanded: true,
-                    value: (selectedRoom != null && globalRegisteredStudents.where((s) => s.roomNo == selectedRoom).map((e) => e.name).contains(selectedStudentName)) ? selectedStudentName : null,
-                    hint: const Text(
-                      "Select Name",
-                      style: TextStyle(color: brandGray, fontSize: 14),
-                    ),
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(
-                        Icons.badge_outlined,
-                        color: brandGray,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 16,
-                      ),
-                    ),
-                    items: selectedRoom == null
-                        ? []
-                        : globalRegisteredStudents
-                              .where((s) => s.roomNo == selectedRoom)
-                              .map((e) => e.name)
-                              .toSet()
-                              .map(
-                                (name) => DropdownMenuItem(
-                                  value: name,
-                                  child: Text(name),
-                                ),
-                              )
-                              .toList(),
-                                        onChanged: (val) {
-                      setState(() {
-                        selectedStudentName = val;
-                        if (val != null && selectedRoom != null) {
-                           try {
-                             var s = globalRegisteredStudents.firstWhere((st) => st.roomNo == selectedRoom && st.name == val);
-                             _isCreatingPassword = s.pin.isEmpty;
-                           } catch (e) {
-                             _isCreatingPassword = false;
-                           }
-                        } else {
-                           _isCreatingPassword = false;
-                        }
-                      });
-                    },
-                    validator: (val) =>
-                        val == null ? "Please select your name" : null,
-                  ),
-                ),
-              ],
-            ),
+              ),
             ],
-            const SizedBox(height: 20),
-            _buildPasswordField(
-              controller: _studentPinController,
-              label: "8 Character Password",
-              hintText: "Enter 8-character Password",
-              icon: Icons.dialpad,
-              isStudent: true,
-              inputFormatters: [
-                LengthLimitingTextInputFormatter(
-                  8,
-                ), // strictly limits to 8 characters
-              ],
-            ),
-              if (!hasSavedStudent && _isCreatingPassword) ...[
-              const SizedBox(height: 20),
-              _buildPasswordField(
-                controller: _studentRePinController,
-                label: "Re-enter Password",
-                hintText: "Re-enter 8-character Password",
-                icon: Icons.lock_outline,
-                isStudent: true,
-                inputFormatters: [
-                  LengthLimitingTextInputFormatter(8),
-                ],
-              ),
-            const SizedBox(height: 20),
-            // Email Verification Field
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Email Verification",
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: brandDark,
+
+            // === STAGE: STANDARD PASSWORD (Admin only) ===
+            if (_authStage == AuthStage.standardPassword) ...[
+              const Center(child: Icon(Icons.admin_panel_settings, color: brandOrange, size: 48)),
+              const SizedBox(height: 12),
+              const Center(child: Text("Admin Verification", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
+              const SizedBox(height: 24),
+              const Text("Standard Password", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _studentPinController,
+                obscureText: !isStudentPinVisible,
+                onChanged: (val) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: "Enter standard password",
+                  prefixIcon: const Icon(Icons.lock_outline, color: brandGray, size: 20),
+                  suffixIcon: IconButton(
+                    icon: Icon(isStudentPinVisible ? Icons.visibility : Icons.visibility_off, color: brandGray, size: 20),
+                    onPressed: () => setState(() => isStudentPinVisible = !isStudentPinVisible),
                   ),
+                  filled: true,
+                  fillColor: brandInputBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                 ),
-                const SizedBox(height: 8),
-                Row(
+              ),
+              const SizedBox(height: 24),
+              _buildActionButton("Verify", _handleUnifiedAction),
+              const SizedBox(height: 12),
+              _buildBackButton(),
+            ],
+
+            // === STAGE: ADMIN EMAIL (after standard password) ===
+            if (_authStage == AuthStage.adminEmail) ...[
+              const Center(child: Icon(Icons.email, color: brandOrange, size: 48)),
+              const SizedBox(height: 12),
+              const Center(child: Text("Email Verification", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
+              const SizedBox(height: 24),
+              const Text("Your Registered Email", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _adminEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: "Enter your registered email",
+                  prefixIcon: const Icon(Icons.email_outlined, color: brandGray, size: 20),
+                  filled: true,
+                  fillColor: brandInputBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 24),
+              _buildActionButton("Send OTP", _handleUnifiedAction),
+              const SizedBox(height: 12),
+              _buildBackButton(),
+            ],
+
+            // === STAGE: PERSONAL PASSWORD / NEW PASSWORD / QUICK LOGIN ===
+            if (_authStage == AuthStage.personalPassword || _authStage == AuthStage.newPassword || hasSavedStudent || hasSavedAdmin) ...[
+              Center(
+                child: Column(
                   children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        decoration: BoxDecoration(
-                          color: _studentEmailVerified ? Colors.green.shade50 : brandInputBg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: _studentEmailVerified ? Colors.green : Colors.transparent,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
+                    if (_authStage == AuthStage.newPassword) ...[
+                      GestureDetector(
+                        onTap: () => _pickImage(true),
+                        child: Stack(
                           children: [
-                            Icon(
-                              _studentEmailVerified ? Icons.verified : Icons.mark_email_unread_outlined,
-                              color: _studentEmailVerified ? Colors.green : brandGray,
-                              size: 22,
+                            Container(
+                              width: 96, height: 96,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFDE9D2), shape: BoxShape.circle,
+                                image: (studentPhotoUrl != null && studentPhotoUrl!.isNotEmpty)
+                                  ? DecorationImage(image: NetworkImage(studentPhotoUrl!), fit: BoxFit.cover) : null,
+                              ),
+                              child: (studentPhotoUrl == null || studentPhotoUrl!.isEmpty)
+                                  ? const Icon(Icons.camera_alt_outlined, color: brandOrange, size: 38) : null,
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Builder(
-                                builder: (context) {
-                                  String displayEmailText = "OTP will be sent to your registered email ID";
-                                  if (_studentEmailVerified) {
-                                    displayEmailText = "Email verified successfully";
-                                  } else {
-                                    if (selectedRoom != null && selectedStudentName != null) {
-                                      try {
-                                        final s = globalRegisteredStudents.firstWhere((st) => st.roomNo == selectedRoom && st.name == selectedStudentName);
-                                        if (s.email.isNotEmpty) {
-                                          final email = s.email.trim();
-                                          if (email.contains('@')) {
-                                            final parts = email.split('@');
-                                            final local = parts[0];
-                                            final domain = parts[1];
-                                            if (local.length <= 2) {
-                                              displayEmailText = "${local.substring(0, 1)}***@$domain";
-                                            } else {
-                                              displayEmailText = "${local.substring(0, 2)}***${local.substring(local.length - 1)}@$domain";
-                                            }
-                                          } else {
-                                            displayEmailText = "Invalid email format";
-                                          }
-                                        }
-                                      } catch (e) {}
-                                    }
-                                  }
-                                  return Text(
-                                    displayEmailText,
-                                    style: TextStyle(
-                                      color: _studentEmailVerified ? Colors.green.shade700 : brandGray,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  );
-                                },
+                            Positioned(
+                              bottom: 2, right: 2,
+                              child: Container(
+                                width: 32, height: 32,
+                                decoration: BoxDecoration(color: brandOrange, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3.0)),
+                                child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      height: 52,
-                      child: ElevatedButton(
-                        onPressed: (_studentEmailVerified || _isVerifyingEmail)
-                            ? null
-                            : () => _verifyEmailAndOtp(isStudentForm: true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _studentEmailVerified ? Colors.green : brandOrange,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                      const SizedBox(height: 8),
+                      const Text("Upload Photo", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: brandGray)),
+                    ] else ...[
+                      Container(
+                        width: 80, height: 80,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle, color: brandInputBg,
+                          image: (() {
+                            String? photo = _isAdminFlow ? adminPhotoUrl : (studentPhotoUrl ?? savedStudentPhoto);
+                            return (photo != null && photo.isNotEmpty) ? DecorationImage(image: NetworkImage(photo), fit: BoxFit.cover) : null;
+                          })(),
                         ),
-                        child: _isVerifyingEmail
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : Text(
-                                _studentEmailVerified ? "Verified \u2713" : "Verify",
-                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                              ),
+                        child: (() {
+                          String? photo = _isAdminFlow ? adminPhotoUrl : (studentPhotoUrl ?? savedStudentPhoto);
+                          return (photo == null || photo.isEmpty) ? const Icon(Icons.person, color: brandGray, size: 32) : null;
+                        })(),
                       ),
-                    ),
+                    ],
+                    const SizedBox(height: 12),
+                    if (_authStage == AuthStage.newPassword && !_isAdminFlow && _matchedStudent != null) ...[
+                      Text(_matchedStudent!.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark)),
+                      Text("Room: ${_matchedStudent!.roomNo}", style: const TextStyle(fontSize: 14, color: brandGray)),
+                    ] else if (_isAdminFlow || hasSavedAdmin) ...[
+                      const Text("Admin", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark)),
+                    ] else ...[
+                      Text(
+                        hasSavedStudent ? "Room: ${savedStudentRoom ?? 'Unknown'}" : (_matchedStudent?.roomNo != null ? "Room: ${_matchedStudent!.roomNo}" : ""),
+                        style: const TextStyle(fontSize: 14, color: brandGray),
+                      ),
+                      Text(
+                        hasSavedStudent ? (savedStudentName ?? "Student") : (_matchedStudent?.name ?? selectedStudentName ?? "Student"),
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark),
+                      ),
+                    ],
                   ],
                 ),
+              ),
+              const SizedBox(height: 24),
+
+              const Text("Password", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _studentPinController,
+                obscureText: !isStudentPinVisible,
+                onChanged: (val) => setState(() {}),
+                maxLength: 16,
+                decoration: InputDecoration(
+                  hintText: _authStage == AuthStage.newPassword ? "Create password (8-16 chars)" : "Enter password",
+                  prefixIcon: const Icon(Icons.lock_outline, color: brandGray, size: 20),
+                  suffixIcon: IconButton(
+                    icon: Icon(isStudentPinVisible ? Icons.visibility : Icons.visibility_off, color: brandGray, size: 20),
+                    onPressed: () => setState(() => isStudentPinVisible = !isStudentPinVisible),
+                  ),
+                  filled: true, fillColor: brandInputBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  counterText: "",
+                ),
+              ),
+              
+              if (_authStage == AuthStage.newPassword) ...[
+                const SizedBox(height: 6),
+                _buildPasswordHints(_studentPinController.text),
+                const SizedBox(height: 16),
+                const Text("Confirm Password", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: brandDark)),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _studentRePinController,
+                  obscureText: !isStudentRePinVisible,
+                  onChanged: (val) => setState(() {}),
+                  maxLength: 16,
+                  decoration: InputDecoration(
+                    hintText: "Re-enter password",
+                    prefixIcon: const Icon(Icons.lock_outline, color: brandGray, size: 20),
+                    suffixIcon: IconButton(
+                      icon: Icon(isStudentRePinVisible ? Icons.visibility : Icons.visibility_off, color: brandGray, size: 20),
+                      onPressed: () => setState(() => isStudentRePinVisible = !isStudentRePinVisible),
+                    ),
+                    filled: true, fillColor: brandInputBg,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                    counterText: "",
+                  ),
+                ),
               ],
-            ),              ], // End of hasSavedStudent
-              if (hasSavedStudent || (!hasSavedStudent && selectedStudentName != null && !_isCreatingPassword)) ...[
+              
+              if (_authStage == AuthStage.personalPassword || hasSavedStudent || hasSavedAdmin) ...[
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () => _handleForgotPassword(true),
-                    child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
+                    onPressed: () => _handleForgotPassword(hasSavedStudent || (!_isAdminFlow && !hasSavedAdmin)),
+                    child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.w500)),
                   ),
                 ),
-
               ],
-            const SizedBox(height: 36),
-            SizedBox(
-              width: double.infinity,
-              height: 58,
-              child: ElevatedButton(
-                onPressed: _handleStudentLogin,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: brandOrange,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 0,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      (!hasSavedStudent && _isCreatingPassword) ? "Sign Up & Login" : "Student Login",
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.arrow_forward, size: 20),
-                  ],
-                ),
+              
+              const SizedBox(height: 24),
+              _buildActionButton(
+                _authStage == AuthStage.newPassword ? "Complete Registration" : "Login",
+                _handleUnifiedAction,
               ),
-            ),
-            if (hasSavedStudent) ...[
-              const SizedBox(height: 16),
-              Center(
-                child: TextButton(
-                  onPressed: () async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.remove('last_student_name');
-                    await prefs.remove('last_room_no');
-                    await prefs.remove('userType');
-                    setState(() {
-                      hasSavedStudent = false;
-                      selectedStudentName = null;
-                      selectedRoom = null;
-                    });
-                  },
-                  child: const Text("Redirect to Login Page", style: TextStyle(color: brandGray, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
-                ),
-              ),
+              const SizedBox(height: 12),
+              _buildBackButton(),
             ],
           ],
         ),
@@ -3102,7 +3331,75 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildAdminPortal() {
+  Widget _buildActionButton(String label, VoidCallback onPressed) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: _isVerifyingEmail ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: brandOrange,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        child: _isVerifyingEmail 
+          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  Widget _buildBackButton() {
+    return Center(
+      child: TextButton(
+        onPressed: () {
+          if (hasSavedStudent) _clearSavedStudent();
+          if (hasSavedAdmin) _clearSavedAdmin();
+          setState(() {
+            _authStage = AuthStage.identifier;
+            _matchedStudent = null;
+            _matchedAdmin = null;
+            _isAdminFlow = false;
+            _studentPinController.clear();
+            _studentRePinController.clear();
+            _studentEmailController.clear();
+            _adminEmailController.clear();
+            studentPhotoUrl = null;
+            adminPhotoUrl = null;
+          });
+        },
+        child: const Text("← Go back to login / Switch user", style: TextStyle(color: brandGray, decoration: TextDecoration.underline)),
+      ),
+    );
+  }
+
+  Widget _buildPasswordHints(String password) {
+    bool hasLength = password.length >= 8 && password.length <= 16;
+    bool hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+    bool hasNumber = RegExp(r'[0-9]').hasMatch(password);
+    bool hasSpecial = RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
+    
+    Widget hint(String text, bool ok) => Row(
+      children: [
+        Icon(ok ? Icons.check_circle : Icons.circle_outlined, size: 14, color: ok ? Colors.green : brandGray),
+        const SizedBox(width: 6),
+        Text(text, style: TextStyle(fontSize: 12, color: ok ? Colors.green : brandGray)),
+      ],
+    );
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        hint("8-16 characters", hasLength),
+        hint("At least 1 uppercase letter", hasUpper),
+        hint("At least 1 number", hasNumber),
+        hint("At least 1 special character (!@#\$%^&*)", hasSpecial),
+      ],
+    );
+  }
+
+
+      Widget _buildAdminPortal() {
     return Container(
       key: const ValueKey("AdminPortal"),
       padding: const EdgeInsets.all(24),
@@ -3712,19 +4009,27 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 if (globalEntryL) ...[
                   const Text("Lunch", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: brandDark)),
                   const SizedBox(height: 8),
-                  if (todayRecord.l.isNotEmpty && _lunchMsgVisible)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: (todayRecord.l == 'P' ? Colors.green : Colors.redAccent).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        children: [
-                          Icon(todayRecord.l == 'P' ? Icons.check_circle : Icons.cancel, color: todayRecord.l == 'P' ? Colors.green : Colors.redAccent),
-                          const SizedBox(width: 8),
-                          Text(todayRecord.l == 'P' ? "Attendance marked! (P)" : "Meal Skipped (A)", style: TextStyle(color: todayRecord.l == 'P' ? Colors.green : Colors.redAccent, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    )
-                  else if (todayRecord.l.isEmpty)
+                  if (todayRecord.l.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: (todayRecord.l == 'P' ? Colors.green : Colors.redAccent).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          children: [
+                            Icon(todayRecord.l == 'P' ? Icons.check_circle : Icons.cancel, color: todayRecord.l == 'P' ? Colors.green : Colors.redAccent),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(todayRecord.l == 'P' ? "Attendance marked! (P)" : "Meal Skipped (A)", style: TextStyle(color: todayRecord.l == 'P' ? Colors.green : Colors.redAccent, fontWeight: FontWeight.bold))),
+                            if (todayRecord.l == 'A')
+                              TextButton(
+                                onPressed: () async {
+                                  setState(() { todayRecord.l = ''; });
+                                  await SyncService.pushAttendance(key, todayRecord);
+                                },
+                                child: const Text("Undo", style: TextStyle(fontWeight: FontWeight.bold)),
+                              )
+                          ],
+                        ),
+                      )
+                    else if (todayRecord.l.isEmpty)
                     Column(
                       children: [
                         SwipeToConfirm(
@@ -3757,19 +4062,27 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 if (globalEntryD) ...[
                   const Text("Dinner", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: brandDark)),
                   const SizedBox(height: 8),
-                  if (todayRecord.d.isNotEmpty && _dinnerMsgVisible)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: (todayRecord.d == 'P' ? Colors.green : Colors.redAccent).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        children: [
-                          Icon(todayRecord.d == 'P' ? Icons.check_circle : Icons.cancel, color: todayRecord.d == 'P' ? Colors.green : Colors.redAccent),
-                          const SizedBox(width: 8),
-                          Text(todayRecord.d == 'P' ? "Attendance marked! (P)" : "Meal Skipped (A)", style: TextStyle(color: todayRecord.d == 'P' ? Colors.green : Colors.redAccent, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    )
-                  else if (todayRecord.d.isEmpty)
+                  if (todayRecord.d.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: (todayRecord.d == 'P' ? Colors.green : Colors.redAccent).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Row(
+                          children: [
+                            Icon(todayRecord.d == 'P' ? Icons.check_circle : Icons.cancel, color: todayRecord.d == 'P' ? Colors.green : Colors.redAccent),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(todayRecord.d == 'P' ? "Attendance marked! (P)" : "Meal Skipped (A)", style: TextStyle(color: todayRecord.d == 'P' ? Colors.green : Colors.redAccent, fontWeight: FontWeight.bold))),
+                            if (todayRecord.d == 'A')
+                              TextButton(
+                                onPressed: () async {
+                                  setState(() { todayRecord.d = ''; });
+                                  await SyncService.pushAttendance(key, todayRecord);
+                                },
+                                child: const Text("Undo", style: TextStyle(fontWeight: FontWeight.bold)),
+                              )
+                          ],
+                        ),
+                      )
+                    else if (todayRecord.d.isEmpty)
                     Column(
                       children: [
                         SwipeToConfirm(
@@ -5148,7 +5461,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     String initialDinner = defaultMenu['dinner']!;
 
     try {
-      final snap = await FirebaseDatabase.instance.ref('hostelData/daily_menus/$todayStr').get();
+      final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/daily_menus/$todayStr').get();
       if (snap.exists && snap.value != null) {
         final data = Map<String, dynamic>.from(snap.value as Map);
         if (data['breakfast'] != null && data['breakfast'].toString().trim().isNotEmpty) initialBreakfast = data['breakfast'];
@@ -5201,7 +5514,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 globalMenuIsPdf = file.extension?.toLowerCase() == 'pdf';
                               });
                               setState(() {});
-                              await SyncService.pushMenu();
+                              try {
+                                await SyncService.pushMenu();
+                              } catch(e) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+                              }
                             }
                           }
                         },
@@ -5236,7 +5553,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                   globalMenuIsPdf = false;
                                 });
                                 setState(() {});
-                                await SyncService.pushMenu();
+                                try {
+                                  await SyncService.pushMenu();
+                                } catch(e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+                                }
                               },
                             ),
                           ],
@@ -5253,7 +5574,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: brandOrange, foregroundColor: Colors.white),
                   onPressed: () async {
-                    await FirebaseDatabase.instance.ref('hostelData/daily_menus/$todayStr').set({
+                    await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/daily_menus/$todayStr').set({
                       'breakfast': bfCtrl.text.trim(),
                       'lunch': luCtrl.text.trim(),
                       'dinner': dnCtrl.text.trim(),
@@ -5403,9 +5724,60 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           backgroundColor: brandBg,
           appBar: AppBar(
             backgroundColor: brandOrange,
-            title: const Text(
-              "Admin Dashboard",
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("Admin  ", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () async {
+                          if (globalHostelMode != 'boys') {
+                            await SyncService.switchMode('boys');
+                            // Let the Future complete before updating UI, but UI is responsive
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: globalHostelMode == 'boys' ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text("Boys", style: TextStyle(
+                            color: globalHostelMode == 'boys' ? const Color(0xFFE86A33) : Colors.white,
+                            fontWeight: FontWeight.w600, fontSize: 13,
+                          )),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () async {
+                          if (globalHostelMode != 'girls') {
+                            await SyncService.switchMode('girls');
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: globalHostelMode == 'girls' ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text("Girls", style: TextStyle(
+                            color: globalHostelMode == 'girls' ? const Color(0xFFE86A33) : Colors.white,
+                            fontWeight: FontWeight.w600, fontSize: 13,
+                          )),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
         centerTitle: true,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -5917,7 +6289,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                   });
                   await SyncService.pushComplaints();
                   NotificationService.sendPushNotificationToAdmins(
-                    "New Complaint: ${titleCtrl.text}",
+                    "New Complaint (${globalHostelMode.toUpperCase()}): ${titleCtrl.text}",
                     "${widget.name} (${widget.roomNo}) has submitted a complaint."
                   );
                   Navigator.pop(context);
@@ -6761,15 +7133,15 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
   Future<void> _performReset() async {
     showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
     try {
-      final dbRef = FirebaseDatabase.instance.ref('hostelData');
+      final dbRef = FirebaseDatabase.instance.ref('hostelData_$globalHostelMode');
       await dbRef.child('students').remove();
       await dbRef.child('attendance').remove();
       await dbRef.child('paid').remove();
       await dbRef.child('polls').remove();
       
       final supa = Supabase.instance.client;
-      await supa.from('notices').delete().not('id', 'is', null);
-      await supa.from('complaints').delete().not('id', 'is', null);
+      await supa.from('notices_$globalHostelMode').delete().not('id', 'is', null);
+      await supa.from('complaints_$globalHostelMode').delete().not('id', 'is', null);
       
       globalRegisteredStudents.clear();
       
