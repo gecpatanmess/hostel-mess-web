@@ -1,4 +1,4 @@
-$apkPath = "build\app\outputs\flutter-apk\app-release.apk"
+$apkPath = "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"
 $destPath = "APK_Releases\HostelMess_final_1.0.76.apk"
 Copy-Item -Path $apkPath -Destination $destPath -Force
 

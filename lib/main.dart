@@ -905,7 +905,7 @@ class SyncService {
     globalAdmins.clear();
     dynamicPolls.clear();
     globalAttendanceMap.clear();
-    globalMonthlyPaid.clear();
+    globalMonthlyPaid.clear(); globalEntryL = false; globalEntryD = false; _switchCooldown = false;
 
     await _firebaseSub?.cancel();
     await _supaMenuSub?.cancel();
@@ -1040,7 +1040,7 @@ class SyncService {
           var adminsData = data['admins']; var adminsList = adminsData is List ? adminsData : (adminsData is Map ? adminsData.values : []); for(var a in adminsList) { if (a != null) { globalAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a))); } }
         }
         
-        globalMonthlyPaid.clear();
+        globalMonthlyPaid.clear(); globalEntryL = false; globalEntryD = false; _switchCooldown = false;
         if (data['paid'] != null) {
           (data['paid'] as Map).forEach((k, v) {
             globalMonthlyPaid[k.toString()] = (v as num).toInt();
@@ -1379,7 +1379,7 @@ class SyncService {
           var adminsData = data['admins']; var adminsList = adminsData is List ? adminsData : (adminsData is Map ? adminsData.values : []); for(var a in adminsList) { if (a != null) { globalAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a))); } }
         }
         
-        globalMonthlyPaid.clear();
+        globalMonthlyPaid.clear(); globalEntryL = false; globalEntryD = false; _switchCooldown = false;
         if (data['paid'] != null) {
           (data['paid'] as Map).forEach((k, v) {
             globalMonthlyPaid[k.toString()] = (v as num).toInt();
@@ -7113,7 +7113,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       globalRegisteredStudents.clear();
       
       globalAttendanceMap.clear();
-      globalMonthlyPaid.clear();
+      globalMonthlyPaid.clear(); globalEntryL = false; globalEntryD = false; _switchCooldown = false;
       globalNotices.clear();
       globalComplaints.clear();
       SyncService.dynamicPolls.clear();
@@ -9175,6 +9175,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 
