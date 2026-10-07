@@ -7113,8 +7113,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       globalRegisteredStudents.clear();
       
       globalAttendanceMap.clear();
-      globalMonthlyPaid.clear(); globalEntryL = false; globalEntryD = false; _switchCooldown = false;
-      globalNotices.clear();
+      globalMonthlyPaid.clear(); globalEntryL = false; globalEntryD = false; globalNotices.clear();
       globalComplaints.clear();
       SyncService.dynamicPolls.clear();
       
@@ -9175,6 +9174,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 
