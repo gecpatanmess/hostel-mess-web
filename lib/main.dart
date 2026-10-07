@@ -1037,9 +1037,7 @@ class SyncService {
         
         if (data.containsKey('admins') && data['admins'] != null) {
           globalAdmins.clear();
-          for(var a in (data['admins'] as List)) {
-            globalAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a)));
-          }
+          var adminsData = data['admins']; var adminsList = adminsData is List ? adminsData : (adminsData is Map ? adminsData.values : []); for(var a in adminsList) { if (a != null) { globalAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a))); } }
         }
         
         globalMonthlyPaid.clear();
@@ -1068,12 +1066,7 @@ class SyncService {
 
         globalRegisteredStudents.clear();
         if (data['students'] != null) {
-          for(var s in (data['students'] as List)) {
-            if (s != null) {
-              var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
-              if (st.isValid) globalRegisteredStudents.add(st);
-            }
-          }
+          var studentsData = data['students']; var studentsList = studentsData is List ? studentsData : (studentsData is Map ? studentsData.values : []); for(var s in studentsList) { if (s != null) { var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s)); if (st.isValid) globalRegisteredStudents.add(st); } }
         }
         
       }
@@ -1383,9 +1376,7 @@ class SyncService {
 
         if (data.containsKey('admins') && data['admins'] != null) {
           globalAdmins.clear();
-          for(var a in (data['admins'] as List)) {
-            globalAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a)));
-          }
+          var adminsData = data['admins']; var adminsList = adminsData is List ? adminsData : (adminsData is Map ? adminsData.values : []); for(var a in adminsList) { if (a != null) { globalAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a))); } }
         }
         
         globalMonthlyPaid.clear();
@@ -1447,12 +1438,7 @@ class SyncService {
         
         globalRegisteredStudents.clear();
         if (data['students'] != null) {
-          for(var s in (data['students'] as List)) {
-            if (s != null) {
-              var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
-              if (st.isValid) globalRegisteredStudents.add(st);
-            }
-          }
+          var studentsData = data['students']; var studentsList = studentsData is List ? studentsData : (studentsData is Map ? studentsData.values : []); for(var s in studentsList) { if (s != null) { var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s)); if (st.isValid) globalRegisteredStudents.add(st); } }
         }
         
         
@@ -2042,12 +2028,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students').get();
         if (snap.exists && snap.value != null) {
           globalRegisteredStudents.clear();
-          for(var s in (snap.value as List)) {
-            if (s != null) {
-              var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
-              if (st.isValid) globalRegisteredStudents.add(st);
-            }
-          }
+          var snapVal = snap.value; var studentsList = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values : []); for(var s in studentsList) { if (s != null) { var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s)); if (st.isValid) globalRegisteredStudents.add(st); } }
         }
       } catch(e) {}
       
@@ -2420,12 +2401,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students').get();
       if (snap.exists && snap.value != null) {
         globalRegisteredStudents.clear();
-        for(var s in (snap.value as List)) {
-          if (s != null) {
-            var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
-              if (st.isValid) globalRegisteredStudents.add(st);
-          }
-        }
+        var snapVal = snap.value; var studentsList = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values : []); for(var s in studentsList) { if (s != null) { var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s)); if (st.isValid) globalRegisteredStudents.add(st); } }
       }
     } catch(e) {}
 
@@ -2765,11 +2741,7 @@ class _LoginScreenState extends State<LoginScreen> {
           final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/admins').get();
           if (snap.exists && snap.value != null) {
             List<AdminUser> tempAdmins = [];
-            for (var a in (snap.value as List)) {
-              if (a != null) {
-                tempAdmins.add(AdminUser.fromJson(Map<String, dynamic>.from(a)));
-              }
-            }
+            var snapVal = snap.value; var adminsList = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values : []); for(var a in adminsList) { if (a != null) { tempAdmins.add(AdminUser.fromJson(Map<String,dynamic>.from(a))); } }
             for (var a in tempAdmins) {
               if (a.phone == input) {
                 _matchedAdmin = a;
@@ -2817,12 +2789,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/students').get();
         if (snap.exists && snap.value != null) {
           List<RegisteredStudent> tempStudents = [];
-          for (var s in (snap.value as List)) {
-            if (s != null) {
-              var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(s));
-              if (st.isValid) tempStudents.add(st);
-            }
-          }
+          var snapVal = snap.value; var studentsList = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values : []); for(var s in studentsList) { if (s != null) { var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s)); if (st.isValid) tempStudents.add(st); } }
           for (var s in tempStudents) {
             if (s.email != null && s.email.toLowerCase() == email) {
               _matchedStudent = s;
@@ -9208,5 +9175,6 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
