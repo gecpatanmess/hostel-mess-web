@@ -3216,11 +3216,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Text("Admin", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark)),
                     ] else ...[
                       Text(
-                        hasSavedStudent ? "Room: ${savedStudentRoom ?? 'Unknown'}" : (_matchedStudent?.roomNo != null ? "Room: ${_matchedStudent!.roomNo}" : ""),
+                        hasSavedStudent ? "Room: ${savedStudentRoom ?? 'Unknown'}" : (selectedRoom != null ? "Room: $selectedRoom" : ""),
                         style: const TextStyle(fontSize: 14, color: brandGray),
                       ),
                       Text(
-                        hasSavedStudent ? (savedStudentName ?? "Student") : (_matchedStudent?.name ?? selectedStudentName ?? "Student"),
+                        hasSavedStudent ? (savedStudentName ?? "Student") : (selectedStudentName ?? "Student"),
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark),
                       ),
                     ],
@@ -9174,6 +9174,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 
