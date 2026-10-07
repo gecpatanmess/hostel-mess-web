@@ -3223,6 +3223,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         hasSavedStudent ? (savedStudentName ?? "Student") : (selectedStudentName ?? "Student"),
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark),
                       ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "[Web v1.0.79 Test: Room ${selectedRoom ?? 'null'}, Matched: ${_matchedStudent?.roomNo ?? 'null'}]",
+                        style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold),
+                      ),
                     ],
                   ],
                 ),
