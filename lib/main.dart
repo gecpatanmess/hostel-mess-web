@@ -746,13 +746,12 @@ void main() async {
       print('Supabase Init Error: $e');
     }
 
+    await _loadDataFromPrefs();
     SyncService.listen();
   } catch (e) {
     print("Firebase Init Error: $e");
   }
 
-  
-  await _loadDataFromPrefs();
   runApp(const MyApp());
 }
 
@@ -821,6 +820,8 @@ Future<void> _loadDataFromPrefs() async {
   }
   
   String? userType = prefs.getString('userType');
+    String? savedHostelMode = prefs.getString('hostelMode');
+    if (savedHostelMode != null) globalHostelMode = savedHostelMode;
   if (userType == 'admin') {
     String? phone = prefs.getString('identifier');
     String? photoUrl = prefs.getString('photoPath');
@@ -1359,6 +1360,7 @@ class SyncService {
   }
 
   static void listen() {
+    initSupabaseStreams();
     _firebaseSub?.cancel();
     _firebaseSub = _dbRef.onValue.listen((event) async {
       final snap = event.snapshot;
@@ -1890,6 +1892,8 @@ class _LoginScreenState extends State<LoginScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       savedStudentName = prefs.getString('last_student_name');
+      String? savedMode = prefs.getString('hostelMode');
+      if (savedMode != null) globalHostelMode = savedMode;
       savedStudentRoom = prefs.getString('last_student_room');
       savedStudentPhoto = prefs.getString('last_student_photo');
       hasSavedStudent = savedStudentName != null && savedStudentName!.isNotEmpty;
@@ -2517,6 +2521,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('last_student_room', selectedRoom!);
     await prefs.setString('last_student_photo', studentPhotoUrl ?? '');
     await prefs.setString('userType', 'student');
+    await prefs.setString('hostelMode', globalHostelMode);
     await prefs.setString('identifier', typedName);
     await prefs.setString('photoPath', studentPhotoUrl ?? '');
     await prefs.setString('extraInfo', selectedRoom!);
@@ -2595,6 +2600,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString('last_admin_name', _adminNameController.text);
           await prefs.setString('last_admin_photo', adminPhotoUrl ?? '');
           await prefs.setString('userType', 'admin');
+    await prefs.setString('hostelMode', globalHostelMode);
           await prefs.setString('identifier', admin.phone);
           await prefs.setString('photoPath', adminPhotoUrl ?? '');
           await prefs.setString('extraInfo', _adminNameController.text);
@@ -2991,6 +2997,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('last_student_room', student.roomNo);
     await prefs.setString('last_student_photo', student.photoUrl ?? '');
     await prefs.setString('userType', 'student');
+    await prefs.setString('hostelMode', globalHostelMode);
     await prefs.setString('identifier', student.name);
     await prefs.setString('photoPath', student.photoUrl ?? '');
     await prefs.setString('extraInfo', student.roomNo);
@@ -3018,6 +3025,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('last_admin_name', admin.name);
     await prefs.setString('last_admin_photo', admin.photoUrl ?? '');
     await prefs.setString('userType', 'admin');
+    await prefs.setString('hostelMode', globalHostelMode);
     await prefs.setString('identifier', admin.phone);
     await prefs.setString('photoPath', admin.photoUrl ?? '');
     await prefs.setString('extraInfo', admin.name);
