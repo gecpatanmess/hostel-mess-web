@@ -20,26 +20,17 @@ class NotificationService {
       final identifier = prefs.getString('identifier');
 
       if (userType == 'student' && identifier != null) {
-        final snap = await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students').get();
+        final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students')
+            .orderByChild('name')
+            .equalTo(identifier)
+            .get();
+            
         if (snap.exists && snap.value != null) {
-          if (snap.value is List) {
-            List students = snap.value as List;
-            for (int i = 0; i < students.length; i++) {
-              if (students[i] != null && students[i] is Map && students[i]['name'] == identifier) {
-                await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students/$i/fcmToken').set(token);
-                print("Saved FCM token for student $identifier");
-                break;
-              }
-            }
-          } else if (snap.value is Map) {
-            Map students = snap.value as Map;
-            for (var key in students.keys) {
-              if (students[key] != null && students[key] is Map && students[key]['name'] == identifier) {
-                await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students/$key/fcmToken').set(token);
-                print("Saved FCM token for student $identifier");
-                break;
-              }
-            }
+          Map students = snap.value as Map;
+          for (var key in students.keys) {
+            await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students/$key/fcmToken').set(token);
+            print("Saved FCM token for student $identifier");
+            break;
           }
         }
       } else if (userType == 'admin' && identifier != null) {
@@ -124,19 +115,30 @@ class NotificationService {
         return;
       }
 
-      // 2. Call our Node.js backend to send the notification
-      final dio = Dio();
-      final response = await dio.post(
-        'https://gecpatan-mess.onrender.com/send-notification',
-        data: {
-          'title': title,
-          'body': body,
-          'tokens': tokens,
-        },
-      );
-      print("Notification sent successfully: \${response.data}");
+      // Batch tokens in chunks of 400 (FCM limit is 500)
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 30),
+      ));
+      const batchSize = 400;
+      for (int i = 0; i < tokens.length; i += batchSize) {
+        final batch = tokens.sublist(i, i + batchSize > tokens.length ? tokens.length : i + batchSize);
+        try {
+          await dio.post(
+            'https://gecpatan-mess.onrender.com/send-notification',
+            data: {
+              'title': title,
+              'body': body,
+              'tokens': batch,
+            },
+          );
+        } catch (e) {
+          print("Error sending notification batch: $e");
+        }
+      }
+      print("Notification sent successfully to ${tokens.length} students");
     } catch (e) {
-      print("Error sending notification: \$e");
+      print("Error sending notification: $e");
     }
   }
 
@@ -169,9 +171,9 @@ class NotificationService {
           'tokens': tokens,
         },
       );
-      print("Admin Notification sent successfully: \${response.data}");
+      print("Admin Notification sent successfully: ${response.data}");
     } catch (e) {
-      print("Error sending admin notification: \$e");
+      print("Error sending admin notification: $e");
     }
   }
 
@@ -210,9 +212,9 @@ class NotificationService {
           'tokens': tokens,
         },
       );
-      print("Specific Student Notification sent successfully: \${response.data}");
+      print("Specific Student Notification sent successfully: ${response.data}");
     } catch (e) {
-      print("Error sending specific student notification: \$e");
+      print("Error sending specific student notification: $e");
     }
   }
 }

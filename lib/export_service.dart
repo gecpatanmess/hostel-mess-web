@@ -38,7 +38,8 @@ class ExportService {
         final String filePath = '${directory.path}/$safeTitle.xlsx';
         final List<int>? bytes = excel.encode();
         if (bytes != null) {
-           savedFile = File(filePath)..writeAsBytesSync(bytes);
+           savedFile = File(filePath);
+           await savedFile.writeAsBytes(bytes);
         }
       } else if (format == 'pdf') {
         final pdf = pw.Document();
@@ -62,14 +63,23 @@ class ExportService {
           )
         );
         final String filePath = '${directory.path}/$safeTitle.pdf';
-        savedFile = File(filePath)..writeAsBytesSync(await pdf.save());
+        savedFile = File(filePath);
+        await savedFile.writeAsBytes(await pdf.save());
       } 
 
       if (savedFile != null) {
-        await Share.shareXFiles([XFile(savedFile.path)], text: 'Here is the report: $title');
+        final box = context.findRenderObject() as RenderBox?;
+        final rect = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+        await Share.shareXFiles(
+          [XFile(savedFile.path)], 
+          text: 'Here is the report: $title',
+          sharePositionOrigin: rect,
+        );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
     }
   }
 }

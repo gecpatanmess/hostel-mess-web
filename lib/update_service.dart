@@ -188,9 +188,6 @@ class _UpdateDialogWidgetState extends State<UpdateDialogWidget> {
         setState(() {
           isDownloading = false;
         });
-        if (!widget.isMandatory) {
-          Navigator.of(context).pop();
-        }
       }
     }
   }

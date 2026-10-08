@@ -17,7 +17,7 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> {
   bool isFirstTime = false;
-  bool isLoading = true;
+
 
   @override
   void initState() {
@@ -25,38 +25,7 @@ class _SplashScreenState extends State<SplashScreen> {
     _checkFirstTime();
   }
 
-  void _checkFirstTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    bool firstTime = prefs.getBool('is_first_time_launch') ?? true;
-
-    if (!firstTime) {
-      // Auto Splash for daily use (1.5 seconds)
-      await Future.delayed(const Duration(milliseconds: 1500));
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => widget.nextScreen,
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 500),
-          ),
-        );
-      }
-    } else {
-      // First time -> Show Next button
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-          isFirstTime = true;
-        });
-      }
-    }
-  }
-
-  void _onNextClicked() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_first_time_launch', false);
+  void _navigateToNext() {
     if (mounted) {
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
@@ -68,6 +37,38 @@ class _SplashScreenState extends State<SplashScreen> {
         ),
       );
     }
+  }
+
+  void _checkFirstTime() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      bool firstTime = prefs.getBool('is_first_time_launch') ?? true;
+
+      if (!firstTime) {
+        await Future.delayed(const Duration(milliseconds: 1500));
+        _navigateToNext();
+      } else {
+        if (mounted) {
+          setState(() {
+            isFirstTime = true;
+          });
+        }
+      }
+    } catch (e) {
+      // Fallback if shared preferences fails
+      await Future.delayed(const Duration(milliseconds: 1500));
+      _navigateToNext();
+    }
+  }
+
+  void _onNextClicked() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('is_first_time_launch', false);
+    } catch (e) {
+      // Proceed anyway if it fails
+    }
+    _navigateToNext();
   }
 
   @override
@@ -98,6 +99,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   child: Image.asset(
                     'assets/logo.jpg',
                     fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.restaurant, size: 80, color: brandOrange),
                   ),
                 ),
               ),
