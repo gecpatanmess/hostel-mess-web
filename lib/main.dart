@@ -9033,9 +9033,10 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
   @override
   Widget build(BuildContext context) {
     List<RegisteredStudent> filtered = globalRegisteredStudents.where((s) {
-      if (_searchQuery.isEmpty) return true;
-      return s.roomNo.toLowerCase().contains(_searchQuery.toLowerCase()) || 
-             s.name.toLowerCase().contains(_searchQuery.toLowerCase());
+      final query = _searchQuery.trim().toLowerCase();
+      if (query.isEmpty) return true;
+      return s.roomNo.toLowerCase().contains(query) || 
+             s.name.toLowerCase().contains(query);
     }).toList();
     
     // Sort by Room No then Name
@@ -9145,6 +9146,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 
