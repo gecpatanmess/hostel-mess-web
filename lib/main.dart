@@ -1049,6 +1049,11 @@ class SyncService {
           });
         }
         
+        if (data['switches'] != null) {
+          globalEntryL = data['switches']['globalEntryL'] ?? false;
+          globalEntryD = data['switches']['globalEntryD'] ?? false;
+        }
+        
         globalAttendanceMap.clear();
         if (data['attendance'] != null) {
           (data['attendance'] as Map).forEach((k, v) {
