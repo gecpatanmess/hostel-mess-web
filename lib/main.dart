@@ -9035,8 +9035,15 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     List<RegisteredStudent> filtered = globalRegisteredStudents.where((s) {
       final query = _searchQuery.trim().toLowerCase();
       if (query.isEmpty) return true;
-      return s.roomNo.toLowerCase().contains(query) || 
-             s.name.toLowerCase().contains(query);
+      final words = query.split(RegExp(r'\s+'));
+      for (var word in words) {
+        if (word.isEmpty) continue;
+        if (!s.roomNo.toLowerCase().contains(word) && 
+            !s.name.toLowerCase().contains(word)) {
+          return false;
+        }
+      }
+      return true;
     }).toList();
     
     // Sort by Room No then Name
@@ -9146,6 +9153,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 

@@ -1,5 +1,5 @@
 $apkPath = "build\app\outputs\flutter-apk\app-arm64-v8a-release.apk"
-$destPath = "APK_Releases\HostelMess_final_1.0.87.apk"
+$destPath = "APK_Releases\HostelMess_final_1.0.89_fixed.apk"
 Copy-Item -Path $apkPath -Destination $destPath -Force
 
 $headers = @{
@@ -9,7 +9,7 @@ $headers = @{
 }
 $bytes = [System.IO.File]::ReadAllBytes($destPath)
 Write-Output "Uploading APK to Supabase Storage..."
-Invoke-RestMethod -Uri "https://whliroffubcqsalxdqfs.supabase.co/storage/v1/object/mess_images/HostelMess_final_1.0.87.apk" -Method Post -Body $bytes -Headers $headers
+Invoke-RestMethod -Uri "https://whliroffubcqsalxdqfs.supabase.co/storage/v1/object/mess_images/HostelMess_final_1.0.89_fixed.apk" -Method Post -Body $bytes -Headers $headers
 
 $dbHeaders = @{
     "apikey" = "sb_publishable_dWnrma0eBAfoHidi0zvTdQ_arcCmFEe"
@@ -18,10 +18,11 @@ $dbHeaders = @{
     "Prefer" = "return=representation"
 }
 $body = @{
-    version = "1.0.87"
-    apk_url = "https://whliroffubcqsalxdqfs.supabase.co/storage/v1/object/public/mess_images/HostelMess_final_1.0.87.apk"
+    version = "1.0.89"
+    apk_url = "https://whliroffubcqsalxdqfs.supabase.co/storage/v1/object/public/mess_images/HostelMess_final_1.0.89_fixed.apk"
 } | ConvertTo-Json
 
 Write-Output "Updating Supabase database..."
 Invoke-RestMethod -Uri "https://whliroffubcqsalxdqfs.supabase.co/rest/v1/app_updates?id=eq.1" -Method Patch -Body $body -Headers $dbHeaders
 Write-Output "Done!"
+
