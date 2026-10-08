@@ -787,7 +787,8 @@ Future<void> _loadDataFromPrefs() async {
     if (savedVersion != currentVersion) {
       await prefs.setString('installed_version', currentVersion);
       if (savedVersion != null) {
-        await prefs.remove('userType');
+        // We used to remove userType here to force login on update.
+        // Removed this so users stay logged in after OTA update.
       }
     }
   } catch(e) {}
@@ -826,7 +827,7 @@ Future<void> _loadDataFromPrefs() async {
     String? phone = prefs.getString('identifier');
     String? photoUrl = prefs.getString('photoPath');
     String? name = prefs.getString('extraInfo');
-    if (phone != null && photoUrl != null ) {
+    if (phone != null) {
       initialScreen = AdminDashboardScreen(
         photoUrl: photoUrl,
         name: name ?? "Admin",
@@ -837,7 +838,7 @@ Future<void> _loadDataFromPrefs() async {
     String? name = prefs.getString('identifier');
     String? photoUrl = prefs.getString('photoPath');
     String? room = prefs.getString('extraInfo');
-    if (name != null && photoUrl != null && room != null ) {
+    if (name != null && room != null) {
       initialScreen = StudentDashboardScreen(
         photoUrl: photoUrl,
         name: name,
@@ -1386,6 +1387,11 @@ class SyncService {
           (data['paid'] as Map).forEach((k, v) {
             globalMonthlyPaid[k.toString()] = (v as num).toInt();
           });
+        }
+        
+        if (data['switches'] != null) {
+          globalEntryL = data['switches']['globalEntryL'] ?? false;
+          globalEntryD = data['switches']['globalEntryD'] ?? false;
         }
         
         globalAttendanceMap.clear();
@@ -2048,10 +2054,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.redAccent));
             return;
           }
-          if (studentPhotoUrl == null && (existingStudent.photoUrl == null || existingStudent.photoUrl!.isEmpty)) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload your photo to continue.'), backgroundColor: Colors.redAccent));
-            return;
-          }
               } else if (existingStudent.pin != typedPin && existingStudent.pin != hashedTypedPin) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2072,10 +2074,6 @@ class _LoginScreenState extends State<LoginScreen> {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.redAccent));
           return;
         }
-        if (studentPhotoUrl == null) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload a student photo for new registration.'), backgroundColor: Colors.redAccent));
-          return;
-        }
         if (roomStudents.length >= 4) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This room is full (Max 4 students).'), backgroundColor: Colors.redAccent));
           return;
@@ -2092,10 +2090,6 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       if (_adminPasswordController.text.length != 8) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password must be exactly 8 characters.'), backgroundColor: Colors.redAccent));
-        return;
-      }
-      if (adminPhotoUrl == null) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload a photo.'), backgroundColor: Colors.redAccent));
         return;
       }
       // Check if admin exists and password matches
@@ -2457,38 +2451,6 @@ class _LoginScreenState extends State<LoginScreen> {
         // Upgrade legacy plaintext to hash
         existingStudent.pin = hashedTypedPin;
       }
-      if (existingStudent.photoUrl == null || existingStudent.photoUrl!.isEmpty) {
-        if (studentPhotoUrl == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Please upload your photo to continue.',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-          return;
-        }
-        existingStudent.photoUrl = studentPhotoUrl;
-      } else {
-        studentPhotoUrl = existingStudent.photoUrl; // Use existing photo unconditionally
-      }
-      await saveRegisteredStudents();
-      await SyncService.pushStudents();
-    } else {
-      if (studentPhotoUrl == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-              'Please upload a student photo for new registration.',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-        return;
-      }
       if (roomStudents.length >= 4) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -2540,22 +2502,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _handleAdminLogin() async {
-    if (adminPhotoUrl == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Please upload an admin photo',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
-      return;
-    }
     // Email verification check for admin
     if (!hasSavedAdmin && !_adminEmailVerified) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2916,10 +2862,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
             return;
          }
-         if (studentPhotoUrl == null || studentPhotoUrl!.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload photo first!')));
-            return;
-         }
          _matchedAdmin!.pin = hashPassword(typedPin);
          _matchedAdmin!.photoUrl = studentPhotoUrl;
          
@@ -2946,10 +2888,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match!')));
         return;
       }
-      if (studentPhotoUrl == null || studentPhotoUrl!.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload your photo to complete registration.')));
-        return;
-      }
       
       _matchedStudent!.pin = hashPassword(typedPin);
       _matchedStudent!.photoUrl = studentPhotoUrl;
@@ -2973,6 +2911,26 @@ class _LoginScreenState extends State<LoginScreen> {
         try {
           target = globalRegisteredStudents.firstWhere((s) => s.name == savedStudentName && s.roomNo == savedStudentRoom);
         } catch(e) {}
+        
+        if (target == null) {
+          // Fallback: If global list hasn't loaded yet, fetch directly!
+          try {
+            final snap = await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students').get();
+            if (snap.exists && snap.value != null) {
+              var studentsData = snap.value;
+              var studentsList = studentsData is List ? studentsData : (studentsData is Map ? studentsData.values : []);
+              for(var s in studentsList) {
+                if (s != null) {
+                  var st = RegisteredStudent.fromJson(Map<String,dynamic>.from(s));
+                  if (st.name == savedStudentName && st.roomNo == savedStudentRoom) {
+                    target = st;
+                    break;
+                  }
+                }
+              }
+            }
+          } catch(e) {}
+        }
       }
       
       if (target != null && (target.pin == typedPin || target.pin == hashed)) {
@@ -3230,11 +3188,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       Text(
                         hasSavedStudent ? (savedStudentName ?? "Student") : (selectedStudentName ?? "Student"),
                         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "[Web v1.0.79 Test: Room ${selectedRoom ?? 'null'}, Matched: ${_matchedStudent?.roomNo ?? 'null'}]",
-                        style: const TextStyle(fontSize: 11, color: Colors.redAccent, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ],
@@ -9187,6 +9140,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 
