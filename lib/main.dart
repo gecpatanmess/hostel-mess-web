@@ -1568,7 +1568,8 @@ Future<bool> showOtpVerificationDialog(BuildContext context, String email) async
 
 class _OtpVerificationDialog extends StatefulWidget {
   final String email;
-  const _OtpVerificationDialog({required this.email});
+  final bool autoSend;
+  const _OtpVerificationDialog({required this.email, this.autoSend = false});
   @override
   State<_OtpVerificationDialog> createState() => _OtpVerificationDialogState();
 }
@@ -1587,7 +1588,13 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
   @override
   void initState() {
     super.initState();
-    _sendOtp();
+    if (widget.autoSend) {
+      _sendOtp();
+    } else {
+      _otpSent = true;
+      _statusMessage = "OTP sent! Check your email inbox.";
+      _startCooldown();
+    }
   }
 
   @override
@@ -2782,7 +2789,7 @@ class _LoginScreenState extends State<LoginScreen> {
         bool verified = await showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (ctx) => _OtpVerificationDialog(email: email, autoSend: true),
+          builder: (ctx) => _OtpVerificationDialog(email: email),
         ) ?? false;
         if (verified) {
           setState(() {
