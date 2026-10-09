@@ -31,8 +31,8 @@ Future<void> fetchAttendanceMonth(int year, int month) async {
   if (_fetchedApiMonths.contains(monthKey)) return;
   try {
     final dio = Dio();
-    dio.options.receiveTimeout = const Duration(seconds: 10);
-    dio.options.sendTimeout = const Duration(seconds: 10);
+    dio.options.receiveTimeout = const Duration(seconds: 45);
+    dio.options.sendTimeout = const Duration(seconds: 45);
     final response = await dio.get(
       '$RENDER_API_URL/attendance-history?year=$year&month=$month',
     );
@@ -57,7 +57,7 @@ Future<void> fetchAttendanceMonth(int year, int month) async {
 }
 
 DailyRecord? getAttendanceMerged(String key) {
-  DateTime now = DateTime.now();
+  DateTime now = realTime;
   String todayPrefix = "${now.year}-${now.month}-${now.day}_";
   if (key.startsWith(todayPrefix)) {
     return globalAttendanceMap[key];
@@ -70,7 +70,7 @@ void forEachMergedAttendance(
 ) {
   Set<String> processed = {};
   globalAttendanceMap.forEach((key, rec) {
-    DateTime now = DateTime.now();
+    DateTime now = realTime;
     String todayPrefix = "${now.year}-${now.month}-${now.day}_";
     if (key.startsWith(todayPrefix)) {
       action(key, rec);
@@ -135,7 +135,7 @@ class WeeklyMenuEditorWidget extends StatefulWidget {
 }
 
 class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
-  int _selectedDay = DateTime.now().weekday;
+  int _selectedDay = realTime.weekday;
   final _bfCtrl = TextEditingController();
   final _luCtrl = TextEditingController();
   final _dnCtrl = TextEditingController();
@@ -299,9 +299,9 @@ class ViewMenuTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final defaultMenu =
-        defaultWeeklyMenu[DateTime.now().weekday] ??
+        defaultWeeklyMenu[realTime.weekday] ??
         defaultWeeklyMenu[DateTime.monday]!;
-    final now = DateTime.now();
+    final now = realTime;
     final todayStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     final weekDay = now.weekday;
@@ -347,7 +347,7 @@ class ViewMenuTab extends StatelessWidget {
               dn = dData['dinner'];
           }
         }
-        final now = DateTime.now();
+        final now = realTime;
         final months = [
           '',
           'January',
@@ -857,8 +857,11 @@ List<RegisteredStudent> globalRegisteredStudents = [];
 String globalHostelMode = 'boys';
 final GlobalKey<NavigatorState> globalNavigatorKey =
     GlobalKey<NavigatorState>();
+int globalServerTimeOffset = 0;
 int globalAppStartTime = DateTime.now().millisecondsSinceEpoch;
+DateTime get realTime => DateTime.now().add(Duration(milliseconds: globalServerTimeOffset));
 void handleForceLogout() async {
+  SyncService.cancelAllStreams();
   final prefs = await SharedPreferences.getInstance();
   await prefs.clear();
   if (globalNavigatorKey.currentContext != null) {
@@ -952,7 +955,11 @@ void main() async {
     );
     print(
       "Firebase Initialized Successfully",
-    ); // Initialize Notification Service
+    );
+    FirebaseDatabase.instance.ref('.info/serverTimeOffset').onValue.listen((event) {
+      globalServerTimeOffset = (event.snapshot.value as num?)?.toInt() ?? 0;
+    });
+    // Initialize Notification Service
     await NotificationService.init();
     try {
       await Supabase.initialize(
@@ -1077,9 +1084,17 @@ int calculatePayableBill(int presentMealsCount) {
 }
 
 class SyncService {
+  static Future<void> deleteStorageImage(String? url) async {
+    if (url == null || url.isEmpty || !url.contains('mess_images')) return;
+    try {
+      String filename = url.split('/').last;
+      await _supabase.storage.from('mess_images').remove([filename]);
+    } catch (e) {}
+  }
+
   static Future<String?> uploadImage(Uint8List bytes) async {
     try {
-      final path = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = '${realTime.millisecondsSinceEpoch}.jpg';
       await _supabase.storage.from('mess_images').uploadBinary(path, bytes);
       return _supabase.storage.from('mess_images').getPublicUrl(path);
     } catch (e) {
@@ -1102,6 +1117,12 @@ class SyncService {
   static StreamSubscription? _supaNoticesSub;
   static StreamSubscription? _supaComplaintsSub;
   static StreamSubscription? _supaMenuSub;
+  static void cancelAllStreams() {
+    _firebaseSub?.cancel();
+    _supaMenuSub?.cancel();
+    _supaNoticesSub?.cancel();
+    _supaComplaintsSub?.cancel();
+  }
   static Future<void> switchMode(String mode) async {
     globalHostelMode = mode;
     _hasDownloadedOnce = false;
@@ -1208,6 +1229,17 @@ class SyncService {
   }
 
   /// Push only ONE attendance record to Firebase
+  static Future<void> pushAttendanceBatch(Map<String, dynamic> updates) async {
+    try {
+      if (updates.isNotEmpty) {
+        await _dbRef.child('attendance').update(updates);
+        globalSyncTrigger.value++;
+      }
+    } catch (e) {
+      print("Push attendance batch error: $e");
+    }
+  }
+
   static Future<void> pushAttendance(String key, DailyRecord rec) async {
     try {
       Map<String, dynamic> updateData = {};
@@ -1230,7 +1262,7 @@ class SyncService {
       await _supabase.from('notices_$globalHostelMode').delete().eq('id', id);
       await _dbRef
           .child('notices_trigger')
-          .set(DateTime.now().millisecondsSinceEpoch);
+          .set(realTime.millisecondsSinceEpoch);
     } catch (e) {
       print("Delete notice error: $e");
     }
@@ -1238,8 +1270,18 @@ class SyncService {
 
   static Future<void> deleteComplaint(String id) async {
     try {
-      globalAdminHiddenComplaints.add(id);
+      // Find the complaint to get its image URL
+      var compIdx = globalComplaints.indexWhere((c) => c.id == id);
+      if (compIdx != -1) {
+        var comp = globalComplaints[compIdx];
+        if (comp.complaintImageUrl != null && comp.complaintImageUrl!.isNotEmpty) {
+          await deleteStorageImage(comp.complaintImageUrl);
+        }
+        globalComplaints.removeAt(compIdx);
+      }
+      globalAdminHiddenComplaints.add(id); // Keep local hide for UI immediate effect
       await saveAdminHiddenComplaints();
+      await _supabase.from('complaints_$globalHostelMode').delete().eq('id', id);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Delete complaint error: $e");
@@ -1324,8 +1366,7 @@ class SyncService {
         }
       } // 2. Fetch from Supabase
       final noticesData = await _supabase
-          .from('notices_$globalHostelMode')
-          .select();
+          .from('notices_$globalHostelMode').select().order('date', ascending: false).limit(50);
       globalNotices.clear();
       for (var n in noticesData) {
         globalNotices.add(
@@ -1338,8 +1379,7 @@ class SyncService {
         );
       }
       final complaintsData = await _supabase
-          .from('complaints_$globalHostelMode')
-          .select();
+          .from('complaints_$globalHostelMode').select().order('date', ascending: false).limit(50);
       globalComplaints.clear();
       for (var c in complaintsData) {
         String? sPhoto = null;
@@ -1371,71 +1411,103 @@ class SyncService {
     }
   }
 
-  static Future<void> pushNotices() async {
+  static Future<void> pushSingleNotice(NoticeItem n) async {
     try {
-      for (var n in globalNotices) {
-        await _supabase.from('notices_$globalHostelMode').upsert({
-          'id': n.id,
-          'title': n.title,
-          'message': n.message,
-          'date': n.date.toIso8601String(),
-        });
-      }
+      await _supabase.from('notices_$globalHostelMode').upsert({
+        'id': n.id,
+        'title': n.title,
+        'message': n.message,
+        'date': n.date.toIso8601String(),
+      });
       await _dbRef
           .child('notices_trigger')
-          .set(DateTime.now().millisecondsSinceEpoch);
+          .set(realTime.millisecondsSinceEpoch);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push notices error: $e");
     }
   }
 
-  /// Push only complaints to Firebase
-  static Future<void> pushComplaints() async {
+  /// Push only single complaint to Firebase
+  static Future<void> pushSingleComplaint(ComplaintItem c) async {
     try {
-      for (var c in globalComplaints) {
-        String photoUrl = c.complaintImageUrl ?? "";
-        await _supabase.from('complaints_$globalHostelMode').upsert({
-          'id': c.id,
-          'title': c.title,
-          'description': c.description,
-          'date': c.date.toIso8601String(),
-          'student_name': c.studentName,
-          'student_room': c.studentRoom,
-          'image_url': photoUrl,
-        });
-      }
+      String photoUrl = c.complaintImageUrl ?? "";
+      await _supabase.from('complaints_$globalHostelMode').upsert({
+        'id': c.id,
+        'title': c.title,
+        'description': c.description,
+        'date': c.date.toIso8601String(),
+        'student_name': c.studentName,
+        'student_room': c.studentRoom,
+        'image_url': photoUrl,
+      });
       globalSyncTrigger.value++;
     } catch (e) {
-      print("Push complaints error: $e");
+      print("Push complaint error: $e");
     }
   }
 
-  /// Push only paid data to Firebase
-  static Future<void> pushPaid() async {
+  /// Target-update a single payment record to prevent race conditions
+  static Future<void> pushPaidTargeted(String monthKey, int amount) async {
     try {
-      await _dbRef.child('paid').set(globalMonthlyPaid);
+      await _dbRef.child('paid').child(monthKey).set(amount);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push paid error: $e");
     }
   }
 
+  /// Target-update a single student to prevent race conditions
+  static Future<void> updateStudentTargeted(RegisteredStudent target) async {
+    try {
+      int idx = globalRegisteredStudents.indexWhere(
+          (s) => s.name == target.name && s.roomNo == target.roomNo);
+      if (idx == -1) return;
+      
+      Map<String, dynamic> updateData = {
+        'name': target.name,
+        'roomNo': target.roomNo,
+        'pin': target.pin,
+        'photoUrl': target.photoUrl ?? "",
+        'email': target.email,
+      };
+      
+      await _dbRef.child('students').child(idx.toString()).update(updateData);
+      globalSyncTrigger.value++;
+    } catch (e) {
+      print("Update student targeted error: $e");
+    }
+  }
+
   /// Push only students list to Firebase
   static Future<void> pushStudents() async {
     try {
-      List<Map<String, dynamic>> studentsList = [];
-      for (var s in globalRegisteredStudents) {
-        String photoUrl = s.photoUrl ?? "";
-        studentsList.add({
-          'name': s.name,
-          'roomNo': s.roomNo,
-          'pin': s.pin,
-          'photoUrl': photoUrl,
-          'email': s.email,
-        });
+      Map<String, dynamic> updates = {};
+      for (int i = 0; i < globalRegisteredStudents.length; i++) {
+        var s = globalRegisteredStudents[i];
+        updates['$i/name'] = s.name;
+        updates['$i/roomNo'] = s.roomNo;
+        updates['$i/pin'] = s.pin;
+        updates['$i/photoUrl'] = s.photoUrl ?? "";
+        updates['$i/email'] = s.email;
       }
-      await _dbRef.child('students').set(studentsList);
+      
+      final snap = await _dbRef.child('students').get();
+      if (snap.exists && snap.value != null) {
+        int cloudLen = 0;
+        if (snap.value is List) {
+          cloudLen = (snap.value as List).length;
+        } else if (snap.value is Map) {
+          cloudLen = (snap.value as Map).keys.length;
+        }
+        for (int i = globalRegisteredStudents.length; i < cloudLen; i++) {
+          updates['$i'] = null;
+        }
+      }
+
+      if (updates.isNotEmpty) {
+        await _dbRef.child('students').update(updates);
+      }
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push students error: $e");
@@ -1445,9 +1517,32 @@ class SyncService {
   /// Push only admins list to Firebase
   static Future<void> pushAdmins() async {
     try {
-      List<Map<String, dynamic>> adminsList = [];
-      for (var a in globalAdmins) adminsList.add(a.toJson());
-      await _dbRef.child('admins').set(adminsList);
+      Map<String, dynamic> updates = {};
+      for (int i = 0; i < globalAdmins.length; i++) {
+        var a = globalAdmins[i];
+        updates['$i/phone'] = a.phone;
+        updates['$i/pin'] = a.pin;
+        updates['$i/name'] = a.name;
+        updates['$i/email'] = a.email;
+        updates['$i/photoUrl'] = a.photoUrl ?? "";
+      }
+      
+      final snap = await _dbRef.child('admins').get();
+      if (snap.exists && snap.value != null) {
+        int cloudLen = 0;
+        if (snap.value is List) {
+          cloudLen = (snap.value as List).length;
+        } else if (snap.value is Map) {
+          cloudLen = (snap.value as Map).keys.length;
+        }
+        for (int i = globalAdmins.length; i < cloudLen; i++) {
+          updates['$i'] = null;
+        }
+      }
+
+      if (updates.isNotEmpty) {
+        await _dbRef.child('admins').update(updates);
+      }
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push admins error: $e");
@@ -1469,13 +1564,13 @@ class SyncService {
           globalMenuUploadBytes ?? await globalMenuFile!.readAsBytes();
       String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
       final path =
-          'menu_${globalHostelMode}_${DateTime.now().millisecondsSinceEpoch}.$ext';
+          'menu_${globalHostelMode}_${realTime.millisecondsSinceEpoch}.$ext';
       await _supabase.storage.from('mess_images').uploadBinary(path, bytes);
       final url = _supabase.storage.from('mess_images').getPublicUrl(path);
       await _supabase.from('menu_$globalHostelMode').upsert({
         'id': 1,
         'image_url': url,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': realTime.toIso8601String(),
       }); // Clear legacy firebase node so it doesn't conflict
       await _dbRef.child('menu').remove();
     } catch (e) {
@@ -1597,8 +1692,7 @@ class SyncService {
           globalSyncTrigger.value++;
         });
     _supaNoticesSub = _supabase
-        .from('notices_$globalHostelMode')
-        .stream(primaryKey: ['id'])
+        .from('notices_$globalHostelMode').stream(primaryKey: ['id']).order('date', ascending: false).limit(50)
         .listen((data) {
           globalNotices.clear();
           for (var n in data) {
@@ -1614,8 +1708,7 @@ class SyncService {
           globalSyncTrigger.value++;
         });
     _supaComplaintsSub = _supabase
-        .from('complaints_$globalHostelMode')
-        .stream(primaryKey: ['id'])
+        .from('complaints_$globalHostelMode').stream(primaryKey: ['id']).order('date', ascending: false).limit(50)
         .listen((data) async {
           globalComplaints.clear();
           for (var c in data) {
@@ -1715,7 +1808,7 @@ class SyncService {
               final dir = await getApplicationDocumentsDirectory();
               String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
               File mFile = File(
-                '${dir.path}/mess_menu_${DateTime.now().millisecondsSinceEpoch}.$ext',
+                '${dir.path}/mess_menu_${realTime.millisecondsSinceEpoch}.$ext',
               );
               await mFile.writeAsBytes(base64Decode(menuBase64));
               globalMenuFile = mFile;
@@ -1800,8 +1893,8 @@ class EmailOtpService {
   static final Dio _dio = Dio(
     BaseOptions(
       baseUrl: _backendBaseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
+      connectTimeout: const Duration(seconds: 45),
+      receiveTimeout: const Duration(seconds: 45),
       headers: {'Content-Type': 'application/json'},
     ),
   );
@@ -2371,6 +2464,11 @@ class _LoginScreenState extends State<LoginScreen> {
       final bytes = await croppedFile.readAsBytes();
       final url = await SyncService.uploadImage(bytes);
       if (url != null) {
+        if (isStudentForm && studentPhotoUrl != null) {
+          await SyncService.deleteStorageImage(studentPhotoUrl);
+        } else if (!isStudentForm && adminPhotoUrl != null) {
+          await SyncService.deleteStorageImage(adminPhotoUrl);
+        }
         setState(() {
           if (isStudentForm) {
             studentPhotoUrl = url;
@@ -2896,7 +2994,7 @@ class _LoginScreenState extends State<LoginScreen> {
               );
           existingStudent.pin = hashPassword(newPassCtrl.text);
           await saveRegisteredStudents();
-          await SyncService.pushStudents();
+          await SyncService.updateStudentTargeted(existingStudent);
         } else {
           var admin =
               _matchedAdmin ??
@@ -3080,7 +3178,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
       await saveRegisteredStudents();
-      await SyncService.pushStudents();
+      await SyncService.updateStudentTargeted(existingStudent);
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('last_student_name', typedName);
@@ -3557,7 +3655,7 @@ class _LoginScreenState extends State<LoginScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Saving profile...')));
       await saveRegisteredStudents();
-      await SyncService.pushStudents();
+      await SyncService.updateStudentTargeted(_matchedStudent!);
       await _finalizeStudentLogin(_matchedStudent!);
     } else {
       // personalPassword stage
@@ -3604,7 +3702,7 @@ class _LoginScreenState extends State<LoginScreen> {
           );
           if (idx != -1) globalRegisteredStudents[idx] = target;
           await saveRegisteredStudents();
-          await SyncService.pushStudents();
+          await SyncService.updateStudentTargeted(target);
         }
         await _finalizeStudentLogin(target);
       } else {
@@ -4851,7 +4949,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         setState(() {
           _isFetchingData = true;
         });
-      DateTime now = DateTime.now();
+      DateTime now = realTime;
       for (int m = 1; m <= now.month; m++) {
         await fetchAttendanceMonth(now.year, m);
       }
@@ -4884,11 +4982,11 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   Timer? _lunchMsgTimer;
   Timer? _dinnerMsgTimer;
   DateTime _attendanceMonth = DateTime(
-    DateTime.now().year,
-    DateTime.now().month,
+    realTime.year,
+    realTime.month,
   );
   Widget _buildHomeTab() {
-    DateTime now = DateTime.now();
+    DateTime now = realTime;
     String key =
         "${now.year}-${now.month}-${now.day}_${widget.roomNo}_${widget.name}";
     DailyRecord todayRecord = globalAttendanceMap[key] ?? DailyRecord();
@@ -5521,8 +5619,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     String studentKey = SyncService.pollSafeKey(
       "${widget.roomNo}_${widget.name}",
     );
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final now = DateTime.now(); // Filter active polls
+    final nowMs = realTime.millisecondsSinceEpoch;
+    final now = realTime; // Filter active polls
     final polls = SyncService.dynamicPolls.values.where((p) {
       bool isLocked = nowMs > p.endTime || !p.isActive;
       return !isLocked;
@@ -5594,7 +5692,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     onTap: isLocked
                         ? null
                         : () async {
-                            if (DateTime.now().millisecondsSinceEpoch >
+                            if (realTime.millisecondsSinceEpoch >
                                     p.endTime ||
                                 !p.isActive) {
                               setState(() {});
@@ -5779,6 +5877,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 
   void _onLogout() async {
+    SyncService.cancelAllStreams();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userType');
     await prefs.remove('identifier');
@@ -6041,7 +6140,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
               setState(() {
                 _selectedIndex = i;
                 if (i == 1) {
-                  globalStudentLastViewedNotices = DateTime.now();
+                  globalStudentLastViewedNotices = realTime;
                 }
               });
             },
@@ -6174,7 +6273,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         setState(() {
           _isFetchingData = true;
         });
-      DateTime now = DateTime.now();
+      DateTime now = realTime;
       for (int m = 1; m <= now.month; m++) {
         await fetchAttendanceMonth(now.year, m);
       }
@@ -6245,7 +6344,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       String yearMonth = parts[0];
       String room = parts[1];
       String name = parts[2]; // Skip the current month - only show past months
-      DateTime now = DateTime.now();
+      DateTime now = realTime;
       String currentMonthKey = "${now.year}-${now.month}";
       if (yearMonth == currentMonthKey) return;
       List<String> ymParts = yearMonth.split('-');
@@ -6419,7 +6518,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ...allPolls.map<Widget>((p) {
               final bool closed =
                   !p.isActive ||
-                  DateTime.now().millisecondsSinceEpoch > p.endTime;
+                  realTime.millisecondsSinceEpoch > p.endTime;
               final String fmtStart = TimeOfDay.fromDateTime(
                 DateTime.fromMillisecondsSinceEpoch(p.startTime),
               ).format(context);
@@ -6875,14 +6974,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   globalNotices.insert(
                     0,
                     NoticeItem(
-                      DateTime.now().toString(),
+                      realTime.toString(),
                       titleCtrl.text,
                       msgCtrl.text,
-                      DateTime.now(),
+                      realTime,
                     ),
                   );
                 });
-                await SyncService.pushNotices();
+                await SyncService.pushSingleNotice(globalNotices[0]);
                 NotificationService.sendPushNotificationToStudents(
                   titleCtrl.text,
                   msgCtrl.text,
@@ -6901,6 +7000,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _onLogout() async {
+    SyncService.cancelAllStreams();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userType');
     await prefs.remove('identifier');
@@ -6913,7 +7013,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _closeMessAndMarkAbsent(String meal) async {
-    DateTime now = DateTime.now();
+    DateTime now = realTime;
+    Map<String, dynamic> batchUpdates = {};
     for (var s in globalRegisteredStudents) {
       String key = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
       if (globalAttendanceMap[key] == null) {
@@ -6923,17 +7024,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           (globalAttendanceMap[key]!.l == '' ||
               globalAttendanceMap[key]!.l == '-')) {
         globalAttendanceMap[key]!.l = 'A';
+        batchUpdates['$key/l'] = 'A';
       } else if (meal == 'd' &&
           (globalAttendanceMap[key]!.d == '' ||
               globalAttendanceMap[key]!.d == '-')) {
         globalAttendanceMap[key]!.d = 'A';
-      } // Push each record individually to Firebase
-      await SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+        batchUpdates['$key/d'] = 'A';
+      }
+    }
+    if (batchUpdates.isNotEmpty) {
+      await SyncService.pushAttendanceBatch(batchUpdates);
     }
   }
 
   void _showSetMenuDialog() async {
-    final now = DateTime.now();
+    final now = realTime;
     final todayStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
     final weekDay = now.weekday;
@@ -7271,7 +7376,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ElevatedButton(
                   onPressed: () async {
                     if (qCtrl.text.trim().isEmpty) return;
-                    final now = DateTime.now();
+                    final now = realTime;
                     final startDt = DateTime(
                       now.year,
                       now.month,
@@ -7296,7 +7401,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       return;
                     }
                     final poll = DynamicPoll(
-                      id: DateTime.now().millisecondsSinceEpoch.toString(),
+                      id: realTime.millisecondsSinceEpoch.toString(),
                       question: qCtrl.text.trim(),
                       options: ["Yes", "No"],
                       startTime: startDt.millisecondsSinceEpoch,
@@ -7635,7 +7740,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       onTap: () {
                         Navigator.pop(context);
                         setState(() {
-                          globalAdminLastViewedComplaints = DateTime.now();
+                          globalAdminLastViewedComplaints = realTime;
                         });
                         Navigator.push(
                           context,
@@ -7941,10 +8046,10 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                       globalComplaints.insert(
                         0,
                         ComplaintItem(
-                          DateTime.now().toString(),
+                          realTime.toString(),
                           titleCtrl.text,
                           msgCtrl.text,
-                          DateTime.now(),
+                          realTime,
                           widget.name,
                           widget.roomNo,
                           widget.photoUrl,
@@ -7952,7 +8057,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                         ),
                       );
                     });
-                    await SyncService.pushComplaints();
+                    await SyncService.pushSingleComplaint(globalComplaints[0]);
                     NotificationService.sendPushNotificationToAdmins(
                       "New Complaint (${globalHostelMode.toUpperCase()}): ${titleCtrl.text}",
                       "${widget.name} (${widget.roomNo}) has submitted a complaint.",
@@ -8394,13 +8499,13 @@ class MealPassScreen extends StatefulWidget {
 
 class _MealPassScreenState extends State<MealPassScreen> {
   late Timer _timer;
-  DateTime _now = DateTime.now();
+  DateTime _now = realTime;
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       setState(() {
-        _now = DateTime.now();
+        _now = realTime;
       });
     });
   }
@@ -8902,7 +9007,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await SyncService.pushStudents();
       await dbRef
           .child('force_logout')
-          .set(DateTime.now().millisecondsSinceEpoch);
+          .set(realTime.millisecondsSinceEpoch);
       globalSyncTrigger.value++;
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('userType');
@@ -8935,9 +9040,9 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
     }
   } // --- TEMPORARY EDITING BLOCK END ---
 
-  DateTime _selectedDailyDate = DateTime.now();
+  DateTime _selectedDailyDate = realTime;
   String _dailySearchQuery = "";
-  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  DateTime _selectedMonth = DateTime(realTime.year, realTime.month);
   String _monthlySearchQuery = "";
   String _paymentFilter = "All"; // All, Paid, Unpaid, Half Paid
   int _getDaysInMonth(int y, int m) =>
@@ -10274,7 +10379,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                               globalMonthlyPaid[row['monthKey']] =
                                                   val;
                                             });
-                                            await SyncService.pushPaid();
+                                            await SyncService.pushPaidTargeted(row['monthKey'], val);
                                           }
                                           Navigator.pop(ctx);
                                         },
@@ -10496,7 +10601,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
             onPressed: () async {
               DateTime? picked = await showDatePicker(
                 context: context,
-                initialDate: selectedDate ?? DateTime.now(),
+                initialDate: selectedDate ?? realTime,
                 firstDate: DateTime(2020),
                 lastDate: DateTime(2030),
               );
@@ -10816,30 +10921,33 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                 );
                 return;
               }
+              RegisteredStudent? targetStudent;
               if (student == null) {
-                globalRegisteredStudents.add(
-                  RegisteredStudent(
-                    nameCtrl.text,
-                    roomCtrl.text,
-                    null,
-                    '',
-                    email: emailCtrl.text.trim(),
-                  ),
+                targetStudent = RegisteredStudent(
+                  nameCtrl.text,
+                  roomCtrl.text,
+                  null,
+                  '',
+                  email: emailCtrl.text.trim(),
                 );
+                globalRegisteredStudents.add(targetStudent);
               } else {
-                int idx = globalRegisteredStudents.indexOf(student);
-                if (idx != -1) {
-                  globalRegisteredStudents[idx] = RegisteredStudent(
+                int foundIdx = globalRegisteredStudents.indexOf(student);
+                if (foundIdx != -1) {
+                  targetStudent = RegisteredStudent(
                     nameCtrl.text,
                     roomCtrl.text,
                     student.photoUrl,
                     student.pin,
                     email: emailCtrl.text.trim(),
                   );
+                  globalRegisteredStudents[foundIdx] = targetStudent;
                 }
               }
-              await SyncService.pushStudents();
-              Navigator.pop(ctx);
+              if (targetStudent != null) {
+                await SyncService.updateStudentTargeted(targetStudent);
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Save'),
           ),
