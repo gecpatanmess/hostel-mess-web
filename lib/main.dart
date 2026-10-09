@@ -1715,13 +1715,13 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
                     child: TextFormField(
                       controller: _otpControllers[i],
                       focusNode: _otpFocusNodes[i],
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.center,`n                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       keyboardType: TextInputType.number,
                       maxLength: 1,
                       enabled: _otpSent && !_isVerifying,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
-                        counterText: "",
+                        contentPadding: EdgeInsets.zero,`n                        counterText: "",
                         filled: true,
                         fillColor: brandInputBg,
                         border: OutlineInputBorder(
@@ -9161,6 +9161,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
 
 
 
