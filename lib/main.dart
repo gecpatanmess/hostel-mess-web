@@ -23,7 +23,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:dio/dio.dart'; // For OTP/Email verification API calls
 
-const String RENDER_API_URL = "https://gecpatan-mess.onrender.com";
+const String RENDER_API_URL = "https://hostel-backend-pdph.onrender.com";
 Map<String, DailyRecord> globalApiAttendanceMap = {};
 Set<String> _fetchedApiMonths = {};
 Future<void> fetchAttendanceMonth(int year, int month) async {
@@ -1887,7 +1887,7 @@ class MyApp extends StatelessWidget {
   }
 } // ============================================================================= // EMAIL OTP VERIFICATION SERVICE // ============================================================================= // Render backend URL for Email/OTP verification
 
-const String _backendBaseUrl = 'https://gecpatan-mess.onrender.com';
+const String _backendBaseUrl = 'https://hostel-backend-pdph.onrender.com';
 
 class EmailOtpService {
   static final Dio _dio = Dio(

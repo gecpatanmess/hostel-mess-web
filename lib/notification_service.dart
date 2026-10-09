@@ -125,7 +125,7 @@ class NotificationService {
         final batch = tokens.sublist(i, i + batchSize > tokens.length ? tokens.length : i + batchSize);
         try {
           await dio.post(
-            'https://gecpatan-mess.onrender.com/send-notification',
+            'https://hostel-backend-pdph.onrender.com/send-notification',
             data: {
               'title': title,
               'body': body,
@@ -164,7 +164,7 @@ class NotificationService {
       // 2. Call our Node.js backend to send the notification
       final dio = Dio();
       final response = await dio.post(
-        'https://gecpatan-mess.onrender.com/send-notification',
+        'https://hostel-backend-pdph.onrender.com/send-notification',
         data: {
           'title': title,
           'body': body,
@@ -205,7 +205,7 @@ class NotificationService {
 
       final dio = Dio();
       final response = await dio.post(
-        'https://gecpatan-mess.onrender.com/send-notification',
+        'https://hostel-backend-pdph.onrender.com/send-notification',
         data: {
           'title': title,
           'body': body,
