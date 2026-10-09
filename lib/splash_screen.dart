@@ -97,7 +97,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 ),
                 child: ClipOval(
                   child: Image.asset(
-                    'assets/logo.jpg',
+                    'assets/mdhk_logo.png',
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) => const Icon(Icons.restaurant, size: 80, color: brandGreen),
                   ),
