@@ -142,7 +142,7 @@ class _UpdateDialogWidgetState extends State<UpdateDialogWidget> {
       // Use temporary directory - compatible with ALL Android versions (Android 5.0 to 14+)
       // Use getExternalStorageDirectory for better compatibility with Android Package Installer
       final tempDir = await getExternalStorageDirectory() ?? await getApplicationDocumentsDirectory();
-      final filePath = '${tempDir.path}/app_update_${widget.version}.apk';
+      final filePath = '${tempDir.path}/HostelMess_${widget.version}.apk';
       final file = File(filePath);
 
       // Remove existing temp update file if present

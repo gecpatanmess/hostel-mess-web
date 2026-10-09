@@ -2782,7 +2782,7 @@ class _LoginScreenState extends State<LoginScreen> {
         bool verified = await showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (ctx) => _OtpVerificationDialog(email: email),
+          builder: (ctx) => _OtpVerificationDialog(email: email, autoSend: true),
         ) ?? false;
         if (verified) {
           setState(() {
@@ -9153,6 +9153,12 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     );
   }
 }
+
+
+
+
+
+
 
 
 
