@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Brand colors (imported implicitly in main or defined here)
-const Color brandOrange = Color(0xFFB74300);
+const Color brandGreen = Color(0xFF135B26);
 const Color brandBg = Color(0xFFF6F8FC);
 const Color brandDark = Color(0xFF0F172A);
 const Color brandGray = Color(0xFF64748B);
@@ -99,7 +99,7 @@ class _SplashScreenState extends State<SplashScreen> {
                   child: Image.asset(
                     'assets/logo.jpg',
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.restaurant, size: 80, color: brandOrange),
+                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.restaurant, size: 80, color: brandGreen),
                   ),
                 ),
               ),
@@ -130,7 +130,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     child: ElevatedButton(
                       onPressed: _onNextClicked,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: brandOrange,
+                        backgroundColor: brandGreen,
                         foregroundColor: Colors.white,
                         elevation: 4,
                         shape: RoundedRectangleBorder(
@@ -152,7 +152,7 @@ class _SplashScreenState extends State<SplashScreen> {
                 const Padding(
                   padding: EdgeInsets.only(bottom: 60),
                   child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(brandOrange),
+                    valueColor: AlwaysStoppedAnimation<Color>(brandGreen),
                   ),
                 ),
             ],
@@ -162,3 +162,4 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
+
