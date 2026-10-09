@@ -3,6 +3,7 @@ import 'dart:async';
 import 'notification_service.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'update_service.dart';
 import 'package:flutter/foundation.dart';
@@ -212,7 +213,7 @@ class _WeeklyMenuEditorWidgetState extends State<WeeklyMenuEditorWidget> {
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text("Close")),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: brandOrange, foregroundColor: Colors.white),
+          style: ElevatedButton.styleFrom(backgroundColor: brandGreen, foregroundColor: Colors.white),
           onPressed: _isLoading ? null : _saveDayMenu,
           child: const Text("Save for this Day"),
         ),
@@ -332,7 +333,7 @@ class ViewMenuTab extends StatelessWidget {
                 icon: "🌅",
                 title: "BREAKFAST",
                 items: bf,
-                color: const Color(0xFFFF6B35),
+                color: const Color(0xFF4CAF50),
                 
                 imageOnRight: true,
               ),
@@ -756,7 +757,7 @@ void main() async {
 }
 
 // Global Brand Colors for consistency
-const Color brandOrange = Color(0xFFB74300);
+const Color brandGreen = Color(0xFF135B26);
 const Color brandBg = Color(0xFFF6F8FC);
 const Color brandInputBg = Color(0xFFEFF3FC);
 const Color brandDark = Color(0xFF0F172A);
@@ -1487,9 +1488,9 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: 'Poppins',
-        primaryColor: brandOrange,
+        primaryColor: brandGreen,
         scaffoldBackgroundColor: brandBg,
-        colorScheme: ColorScheme.fromSeed(seedColor: brandOrange),
+        colorScheme: ColorScheme.fromSeed(seedColor: brandGreen),
       ),
       builder: (context, child) {
         return ResponsiveWrapper(child: child!);
@@ -1689,10 +1690,10 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
               Container(
                 width: 64, height: 64,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFDE9D2),
+                  color: const Color(0xFFE8F5E9),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.mark_email_read_outlined, color: brandOrange, size: 32),
+                child: const Icon(Icons.mark_email_read_outlined, color: brandGreen, size: 32),
               ),
               const SizedBox(height: 20),
               const Text("Email Verification", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: brandDark)),
@@ -1729,7 +1730,7 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: brandOrange, width: 2),
+                          borderSide: const BorderSide(color: brandGreen, width: 2),
                         ),
                       ),
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: brandDark),
@@ -1789,7 +1790,7 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
                 child: ElevatedButton(
                   onPressed: (_otpSent && !_isVerifying && !_isSending) ? _verifyOtp : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: brandOrange,
+                    backgroundColor: brandGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     elevation: 0,
@@ -1816,7 +1817,7 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: (_resendCooldown <= 0 && !_isSending) ? brandOrange : brandGray,
+                        color: (_resendCooldown <= 0 && !_isSending) ? brandGreen : brandGray,
                       ),
                     ),
                   ),
@@ -1993,7 +1994,7 @@ class _LoginScreenState extends State<LoginScreen> {
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: 'Crop Photo',
-            toolbarColor: const Color(0xFFE86A33),
+            toolbarColor: const Color(0xFF2E7D32),
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.square,
             lockAspectRatio: true,
@@ -2322,7 +2323,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel", style: TextStyle(color: brandGray))),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: brandOrange,
+                    backgroundColor: brandGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -3038,7 +3039,7 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const Row(
               children: [
-                Icon(Icons.login, color: brandOrange, size: 22),
+                Icon(Icons.login, color: brandGreen, size: 22),
                 SizedBox(width: 10),
                 Text(
                   "Login",
@@ -3071,7 +3072,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ElevatedButton(
                   onPressed: _isVerifyingEmail ? null : _verifyIdentifierStage,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: brandOrange,
+                    backgroundColor: brandGreen,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
@@ -3084,7 +3085,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
             // === STAGE: STANDARD PASSWORD (Admin only) ===
             if (_authStage == AuthStage.standardPassword) ...[
-              const Center(child: Icon(Icons.admin_panel_settings, color: brandOrange, size: 48)),
+              const Center(child: Icon(Icons.admin_panel_settings, color: brandGreen, size: 48)),
               const SizedBox(height: 12),
               const Center(child: Text("Admin Verification", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
               const SizedBox(height: 24),
@@ -3114,7 +3115,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
             // === STAGE: ADMIN EMAIL (after standard password) ===
             if (_authStage == AuthStage.adminEmail) ...[
-              const Center(child: Icon(Icons.email, color: brandOrange, size: 48)),
+              const Center(child: Icon(Icons.email, color: brandGreen, size: 48)),
               const SizedBox(height: 12),
               const Center(child: Text("Email Verification", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark))),
               const SizedBox(height: 24),
@@ -3150,18 +3151,18 @@ class _LoginScreenState extends State<LoginScreen> {
                             Container(
                               width: 96, height: 96,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFDE9D2), shape: BoxShape.circle,
+                                color: const Color(0xFFE8F5E9), shape: BoxShape.circle,
                                 image: (studentPhotoUrl != null && studentPhotoUrl!.isNotEmpty)
                                   ? DecorationImage(image: NetworkImage(studentPhotoUrl!), fit: BoxFit.cover) : null,
                               ),
                               child: (studentPhotoUrl == null || studentPhotoUrl!.isEmpty)
-                                  ? const Icon(Icons.camera_alt_outlined, color: brandOrange, size: 38) : null,
+                                  ? const Icon(Icons.camera_alt_outlined, color: brandGreen, size: 38) : null,
                             ),
                             Positioned(
                               bottom: 2, right: 2,
                               child: Container(
                                 width: 32, height: 32,
-                                decoration: BoxDecoration(color: brandOrange, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3.0)),
+                                decoration: BoxDecoration(color: brandGreen, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3.0)),
                                 child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                               ),
                             ),
@@ -3257,7 +3258,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () => _handleForgotPassword(hasSavedStudent || (!_isAdminFlow && !hasSavedAdmin)),
-                    child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.w500)),
+                    child: const Text("Forgot Password?", style: TextStyle(color: brandGreen, fontWeight: FontWeight.w500)),
                   ),
                 ),
               ],
@@ -3283,7 +3284,7 @@ class _LoginScreenState extends State<LoginScreen> {
       child: ElevatedButton(
         onPressed: _isVerifyingEmail ? null : onPressed,
         style: ElevatedButton.styleFrom(
-          backgroundColor: brandOrange,
+          backgroundColor: brandGreen,
           foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
@@ -3366,7 +3367,7 @@ class _LoginScreenState extends State<LoginScreen> {
           children: [
             const Row(
               children: [
-                Icon(Icons.shield_outlined, color: brandOrange, size: 22),
+                Icon(Icons.shield_outlined, color: brandGreen, size: 22),
                 SizedBox(width: 10),
                 Text(
                   "Admin Portal",
@@ -3390,7 +3391,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 96,
                           height: 96,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFDE9D2),
+                            color: const Color(0xFFE8F5E9),
                             shape: BoxShape.circle,
                             image: (adminPhotoUrl != null && adminPhotoUrl!.isNotEmpty) ? DecorationImage(image: NetworkImage(adminPhotoUrl!), fit: BoxFit.cover)
                                 : null,
@@ -3398,7 +3399,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: (adminPhotoUrl == null || adminPhotoUrl!.isEmpty)
                               ? const Icon(
                                   Icons.person_outline,
-                                  color: brandOrange,
+                                  color: brandGreen,
                                   size: 42,
                                 )
                               : null,
@@ -3410,7 +3411,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 32,
                             height: 32,
                             decoration: BoxDecoration(
-                              color: brandOrange,
+                              color: brandGreen,
                               shape: BoxShape.circle,
                               border: Border.all(
                                 color: Colors.white,
@@ -3418,7 +3419,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: brandOrange.withOpacity(0.3),
+                                  color: brandGreen.withOpacity(0.3),
                                   blurRadius: 8,
                                   offset: const Offset(0, 4),
                                 ),
@@ -3522,7 +3523,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide: BorderSide(
-                              color: _adminEmailVerified ? Colors.green : brandOrange,
+                              color: _adminEmailVerified ? Colors.green : brandGreen,
                               width: 1.5,
                             ),
                           ),
@@ -3538,7 +3539,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ? null
                             : () => _verifyEmailAndOtp(isStudentForm: false),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _adminEmailVerified ? Colors.green : brandOrange,
+                          backgroundColor: _adminEmailVerified ? Colors.green : brandGreen,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           elevation: 0,
@@ -3561,7 +3562,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () => _handleForgotPassword(false),
-                    child: const Text("Forgot Password?", style: TextStyle(color: brandOrange, fontWeight: FontWeight.bold)),
+                    child: const Text("Forgot Password?", style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold)),
                   ),
                 ),
 
@@ -3573,7 +3574,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: ElevatedButton(
                 onPressed: _handleAdminLogin,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: brandOrange,
+                  backgroundColor: brandGreen,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -3936,15 +3937,15 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   children: [
                     const Row(
                       children: [
-                        Icon(Icons.restaurant, color: brandOrange),
+                        Icon(Icons.restaurant, color: brandGreen),
                         SizedBox(width: 8),
                         Text("Today's Attendance", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: brandDark)),
                       ],
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: brandOrange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Text("${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}", style: const TextStyle(color: brandOrange, fontSize: 12, fontWeight: FontWeight.w600)),
+                      decoration: BoxDecoration(color: brandGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                      child: Text("${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}", style: const TextStyle(color: brandGreen, fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),
@@ -4153,7 +4154,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.bar_chart, color: brandOrange),
+                    Icon(Icons.bar_chart, color: brandGreen),
                     SizedBox(width: 8),
                     Text("Attendance", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: brandDark)),
                   ],
@@ -4162,14 +4163,14 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, size: 16, color: brandOrange),
+                      icon: const Icon(Icons.arrow_back_ios, size: 16, color: brandGreen),
                       onPressed: () => setState(() {
                         _attendanceMonth = DateTime(_attendanceMonth.year, _attendanceMonth.month - 1, 1);
                       }),
                     ),
                     Text("$monthName $currentYear", style: const TextStyle(fontWeight: FontWeight.bold, color: brandDark)),
                     IconButton(
-                      icon: const Icon(Icons.arrow_forward_ios, size: 16, color: brandOrange),
+                      icon: const Icon(Icons.arrow_forward_ios, size: 16, color: brandGreen),
                       onPressed: () => setState(() {
                         _attendanceMonth = DateTime(_attendanceMonth.year, _attendanceMonth.month + 1, 1);
                       }),
@@ -4189,7 +4190,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: _buildStatBox("Payable Bill", "₹$payableBill", brandOrange, subtext: "(Min 22-day rule)")),
+                Expanded(child: _buildStatBox("Payable Bill", "₹$payableBill", brandGreen, subtext: "(Min 22-day rule)")),
                 const SizedBox(width: 16),
                 Expanded(child: _buildStatBox("Actual Bill", "₹$actualBill", brandDark, subtext: "(Real cost)")),
               ],
@@ -4212,7 +4213,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 icon: const Icon(Icons.list_alt, color: Colors.white),
                 label: const Text("View Full Details", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: brandOrange,
+                  backgroundColor: brandGreen,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -4267,7 +4268,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.poll, color: brandOrange),
+                    const Icon(Icons.poll, color: brandGreen),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(p.question, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brandDark)),
@@ -4315,7 +4316,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                             child: Container(
                               height: 40,
                               decoration: BoxDecoration(
-                                color: amI ? brandOrange.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
+                                color: amI ? brandGreen.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
@@ -4330,7 +4331,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 Row(
                                   children: [
                                     Text(opt, style: TextStyle(fontWeight: FontWeight.bold, color: isLocked ? brandGray : brandDark)),
-                                    if (amI) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check_circle, size: 16, color: brandOrange)),
+                                    if (amI) const Padding(padding: EdgeInsets.only(left: 8), child: Icon(Icons.check_circle, size: 16, color: brandGreen)),
                                   ],
                                 ),
                                 Text("${(percent * 100).toStringAsFixed(1)}%", style: const TextStyle(color: brandDark)),
@@ -4383,8 +4384,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
                   leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFFDE9D2),
-                    child: Icon(Icons.notifications, color: brandOrange),
+                    backgroundColor: Color(0xFFE8F5E9),
+                    child: Icon(Icons.notifications, color: brandGreen),
                   ),
                   title: Text(
                     notice.title,
@@ -4406,7 +4407,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         formatDateTime(notice.date),
                         style: const TextStyle(
                           fontSize: 11,
-                          color: brandOrange,
+                          color: brandGreen,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -4451,7 +4452,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         Scaffold(
           backgroundColor: brandBg,
       appBar: AppBar(
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         title: const Text(
           "Student Dashboard",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
@@ -4473,7 +4474,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
           padding: EdgeInsets.zero,
           children: [
             UserAccountsDrawerHeader(
-              decoration: const BoxDecoration(color: brandOrange),
+              decoration: const BoxDecoration(color: brandGreen),
               accountName: Text(
                 widget.name,
                 style: const TextStyle(
@@ -4654,13 +4655,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: brandOrange.withOpacity(0.1),
+                          color: brandGreen.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           "Room: ${widget.roomNo}",
                           style: const TextStyle(
-                            color: brandOrange,
+                            color: brandGreen,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
@@ -4693,7 +4694,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             }
           });
         },
-        selectedItemColor: brandOrange,
+        selectedItemColor: brandGreen,
         unselectedItemColor: brandGray,
         backgroundColor: Colors.white,
         items: [
@@ -4749,7 +4750,7 @@ class LongLeaveScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: brandBg,
       appBar: AppBar(
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         title: const Text(
           "Long Leave",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -4765,13 +4766,13 @@ class LongLeaveScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: brandOrange.withValues(alpha: 0.1),
+                  color: brandGreen.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.construction_rounded,
                   size: 72,
-                  color: brandOrange,
+                  color: brandGreen,
                 ),
               ),
               const SizedBox(height: 24),
@@ -4953,7 +4954,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             width: double.infinity,
             height: 50,
             child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: brandOrange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              style: ElevatedButton.styleFrom(backgroundColor: brandGreen, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               onPressed: () async {
                 if (_newAdminMobileCtrl.text.length == 10 && _newAdminPinCtrl.text.length == 8 && _newAdminEmailCtrl.text.contains('@')) {
                   setState(() {
@@ -5146,7 +5147,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         child: Row(
                           children: [
                             CircleAvatar(
-                              backgroundColor: brandOrange,
+                              backgroundColor: brandGreen,
                               child: (st.photoUrl != null && st.photoUrl!.isNotEmpty)
                   ? ClipOval(
                       child: Image.network(
@@ -5252,7 +5253,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           formatDateTime(notice.date),
                           style: const TextStyle(
                             fontSize: 11,
-                            color: brandOrange,
+                            color: brandGreen,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -5273,7 +5274,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         onPressed: _showAddNoticeDialog,
         child: const Icon(Icons.add, color: Colors.white),
       ),
@@ -5329,7 +5330,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: brandOrange,
+              backgroundColor: brandGreen,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -5469,10 +5470,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         },
                         child: Container(
                           width: double.infinity, padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: brandInputBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: brandOrange.withOpacity(0.5))),
+                          decoration: BoxDecoration(color: brandInputBg, borderRadius: BorderRadius.circular(16), border: Border.all(color: brandGreen.withOpacity(0.5))),
                           child: const Column(
                             children: [
-                              Icon(Icons.add_circle_outline, color: brandOrange, size: 32),
+                              Icon(Icons.add_circle_outline, color: brandGreen, size: 32),
                               SizedBox(height: 8),
                               Text("Upload PDF or Image", style: TextStyle(color: brandGray, fontWeight: FontWeight.w500)),
                             ],
@@ -5485,7 +5486,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         decoration: BoxDecoration(color: brandInputBg, borderRadius: BorderRadius.circular(12)),
                         child: Row(
                           children: [
-                            Icon(globalMenuIsPdf ? Icons.picture_as_pdf : Icons.image, color: brandOrange),
+                            Icon(globalMenuIsPdf ? Icons.picture_as_pdf : Icons.image, color: brandGreen),
                             const SizedBox(width: 8),
                             Expanded(child: Text(globalMenuFile != null ? globalMenuFile!.path.split('/').last.split('\\').last : 'Uploaded Menu', maxLines: 2, overflow: TextOverflow.visible)),
                             IconButton(
@@ -5517,7 +5518,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   child: const Text("Cancel", style: TextStyle(color: brandGray)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: brandOrange, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: brandGreen, foregroundColor: Colors.white),
                   onPressed: () async {
                     await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/daily_menus/$todayStr').set({
                       'breakfast': bfCtrl.text.trim(),
@@ -5668,7 +5669,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         Scaffold(
           backgroundColor: brandBg,
           appBar: AppBar(
-            backgroundColor: brandOrange,
+            backgroundColor: brandGreen,
             title: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -5696,7 +5697,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Text("Boys", style: TextStyle(
-                            color: globalHostelMode == 'boys' ? const Color(0xFFE86A33) : Colors.white,
+                            color: globalHostelMode == 'boys' ? const Color(0xFF2E7D32) : Colors.white,
                             fontWeight: FontWeight.w600, fontSize: 13,
                           )),
                         ),
@@ -5714,7 +5715,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Text("Girls", style: TextStyle(
-                            color: globalHostelMode == 'girls' ? const Color(0xFFE86A33) : Colors.white,
+                            color: globalHostelMode == 'girls' ? const Color(0xFF2E7D32) : Colors.white,
                             fontWeight: FontWeight.w600, fontSize: 13,
                           )),
                         ),
@@ -5760,7 +5761,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           padding: EdgeInsets.zero,
           children: [
             UserAccountsDrawerHeader(
-              decoration: const BoxDecoration(color: brandOrange),
+              decoration: const BoxDecoration(color: brandGreen),
               accountName: Text(
                 widget.name,
                 style: const TextStyle(
@@ -5793,7 +5794,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 // removed Breakfast switch
                 SwitchListTile(
                   title: const Text('Lunch'),
-                  activeColor: brandOrange,
+                  activeColor: brandGreen,
                   value: globalEntryL,
                   onChanged: (v) async {
                     setState(() => globalEntryL = v);
@@ -5808,7 +5809,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 ),
                 SwitchListTile(
                   title: const Text('Dinner'),
-                  activeColor: brandOrange,
+                  activeColor: brandGreen,
                   value: globalEntryD,
                   onChanged: (v) async {
                     setState(() => globalEntryD = v);
@@ -6075,7 +6076,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (i) => setState(() => _selectedIndex = i),
-        selectedItemColor: brandOrange,
+        selectedItemColor: brandGreen,
         unselectedItemColor: brandGray,
         backgroundColor: Colors.white,
         type: BottomNavigationBarType.fixed, items: const [
@@ -6210,7 +6211,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: brandOrange,
+                backgroundColor: brandGreen,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -6254,7 +6255,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
       backgroundColor: brandBg,
       appBar: AppBar(
         title: const Text("Mess Complaints"),
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         foregroundColor: Colors.white,
       ),
       body: ValueListenableBuilder(
@@ -6317,7 +6318,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                           formatDateTime(c.date),
                           style: const TextStyle(
                             fontSize: 11,
-                            color: brandOrange,
+                            color: brandGreen,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -6341,7 +6342,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddDialog,
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
@@ -6370,7 +6371,7 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
       backgroundColor: brandBg,
       appBar: AppBar(
         title: const Text("Student Complaints"),
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         foregroundColor: Colors.white,
       ),
       body: ValueListenableBuilder(
@@ -6450,7 +6451,7 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
                           formatDateTime(c.date),
                           style: const TextStyle(
                             fontSize: 11,
-                            color: brandOrange,
+                            color: brandGreen,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -6484,7 +6485,7 @@ class AdminRegisteredStudentsScreen extends StatelessWidget {
       backgroundColor: brandBg,
       appBar: AppBar(
         title: const Text("Registered Students"),
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         foregroundColor: Colors.white,
       ),
       body: globalRegisteredStudents.isEmpty
@@ -6509,7 +6510,7 @@ class AdminRegisteredStudentsScreen extends StatelessWidget {
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(16),
                     leading: CircleAvatar(
-                      backgroundColor: brandOrange,
+                      backgroundColor: brandGreen,
                       child: (s.photoUrl != null && s.photoUrl!.isNotEmpty)
                   ? ClipOval(
                       child: Image.network(
@@ -6571,7 +6572,7 @@ class _SwipeToConfirmState extends State<SwipeToConfirm> {
           decoration: BoxDecoration(
             color: brandInputBg,
             borderRadius: BorderRadius.circular(_height / 2),
-            border: Border.all(color: brandOrange.withOpacity(0.5)),
+            border: Border.all(color: brandGreen.withOpacity(0.5)),
           ),
           child: Stack(
             children: [
@@ -6613,7 +6614,7 @@ class _SwipeToConfirmState extends State<SwipeToConfirm> {
                     width: _height,
                     height: _height,
                     decoration: const BoxDecoration(
-                      color: brandOrange,
+                      color: brandGreen,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -6915,7 +6916,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
               ),
               title: const Row(
                 children: [
-                  Icon(Icons.lock_outline, color: brandOrange),
+                  Icon(Icons.lock_outline, color: brandGreen),
                   SizedBox(width: 8),
                   Text(
                     "Security Verification",
@@ -6975,7 +6976,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: brandOrange,
+                    backgroundColor: brandGreen,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -7507,7 +7508,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                             : (row['isEmpty'] ? '' : '-'),
                         textAlign: TextAlign.right,
                         style: TextStyle(
-                          color: row['total'] > 0 ? brandOrange : brandGray,
+                          color: row['total'] > 0 ? brandGreen : brandGray,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -7688,7 +7689,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                               Text(
                                 "Month: ${_selectedMonth.month}/${_selectedMonth.year} | Payable: ₹$currentPayable",
                                 style: const TextStyle(
-                                  color: brandOrange,
+                                  color: brandGreen,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -8335,7 +8336,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
               Color statusColor = Colors.redAccent;
               if (row['status'] == 'Paid') statusColor = Colors.green;
-              if (row['status'] == 'Half Paid') statusColor = Colors.orange;
+              if (row['status'] == 'Half Paid') statusColor = Colors.green;
 
               return InkWell(
                 onTap: () => _showStudentHistoryDialog(student, row),
@@ -8416,7 +8417,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                           "₹${row['payable']}",
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            color: brandOrange,
+                            color: brandGreen,
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
                           ),
@@ -8535,7 +8536,7 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
           child: Scaffold(
             backgroundColor: brandBg,
             appBar: AppBar(
-              backgroundColor: brandOrange,
+              backgroundColor: brandGreen,
               title: const Text(
                 "Attendance Sheet",
                 style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
@@ -8673,7 +8674,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
     return Scaffold(
       backgroundColor: brandBg,
       appBar: AppBar(
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         title: const Text(
           "My Attendance",
           style: TextStyle(color: Colors.white),
@@ -8856,7 +8857,7 @@ class _StudentAttendanceScreenState extends State<StudentAttendanceScreen> {
                             "₹${row['total']}",
                             textAlign: TextAlign.right,
                             style: TextStyle(
-                              color: row['total'] > 0 ? brandOrange : brandGray,
+                              color: row['total'] > 0 ? brandGreen : brandGray,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -9063,7 +9064,7 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Manage Students", style: TextStyle(color: Colors.white)),
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Column(
@@ -9153,13 +9154,15 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: brandOrange,
+        backgroundColor: brandGreen,
         child: const Icon(Icons.add, color: Colors.white),
         onPressed: () => _showAddEditDialog(),
       ),
     );
   }
 }
+
+
 
 
 
