@@ -5110,6 +5110,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
             .get();
         if (snap.exists) {
           _checkSnapshotForEviction(snap);
+        } else {
+          _executeInstantAutoLogout();
         }
       } catch (e) {}
     });
@@ -6580,6 +6582,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             .get();
         if (snap.exists) {
           _checkAdminSnapshotForEviction(snap);
+        } else {
+          _executeInstantAdminAutoLogout();
         }
       } catch (e) {}
     });
