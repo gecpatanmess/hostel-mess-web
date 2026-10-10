@@ -132070,7 +132070,7 @@ return A.o(null,r)
 case 1:return A.n(p.at(-1),r)}})
 return A.p($async$Gq,r)},
 P(a){var s=null,r=A.b([new A.cl(5,B.aF,A.cC(B.o.au(25.5),B.P.ad()>>>16&255,B.P.ad()>>>8&255,B.P.ad()&255),B.z,20)],t.sq)
-r=A.b([B.lU,A.bc(s,A.vP(A.bs5("assets/mdhk_logo.png",new A.bhX(),B.dJ,s,s)),B.I,s,s,new A.bC(s,s,s,s,r,s,B.cq),s,160,s,s,s,s,s,160),B.xw,B.bqQ,B.co,B.brH,B.lU],t.p)
+r=A.b([B.lU,A.bc(s,A.vP(A.bs5("assets/logo.jpg",new A.bhX(),B.dJ,s,s)),B.I,s,s,new A.bC(s,s,s,s,r,s,B.cq),s,160,s,s,s,s,s,160),B.xw,B.bqQ,B.co,B.brH,B.lU],t.p)
 if(this.d)r.push(new A.aK(B.a5G,A.cd(A.k_(!1,B.brm,s,s,s,s,s,s,this.gaXe(),s,A.ju(s,s,B.a7,s,s,s,4,s,s,s,B.A,s,s,s,s,new A.bU(A.b6(16),B.J),s,s,s,s,s)),55,1/0),s))
 if(!this.d)r.push(B.bd3)
 return A.lO(s,B.es,A.Cs(!0,A.e0(A.bw(r,B.L,s,B.d4,B.M,0,B.V),s,s),B.aB,!0),s,s,s)}}
