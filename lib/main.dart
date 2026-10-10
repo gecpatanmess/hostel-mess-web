@@ -1513,9 +1513,8 @@ class SyncService {
   /// Push only students list to Firebase
   static Future<void> pushStudents() async {
     try {
-      Map<String, dynamic> updates = {};
-      for (int i = 0; i < globalRegisteredStudents.length; i++) {
-        var s = globalRegisteredStudents[i];
+      List<Map<String, dynamic>> studentsList = [];
+      for (var s in globalRegisteredStudents) {
         Map<String, dynamic> stMap = {
           'name': s.name,
           'roomNo': s.roomNo,
@@ -1527,25 +1526,11 @@ class SyncService {
         if (s.fcmToken != null && s.fcmToken!.isNotEmpty) {
           stMap['fcmToken'] = s.fcmToken;
         }
-        updates['$i'] = stMap;
-      }
-      
-      final snap = await _dbRef.child('students').get();
-      if (snap.exists && snap.value != null) {
-        int cloudLen = 0;
-        if (snap.value is List) {
-          cloudLen = (snap.value as List).length;
-        } else if (snap.value is Map) {
-          cloudLen = (snap.value as Map).keys.length;
-        }
-        for (int i = globalRegisteredStudents.length; i < cloudLen; i++) {
-          updates['$i'] = null;
-        }
+        studentsList.add(stMap);
       }
 
-      if (updates.isNotEmpty) {
-        await _dbRef.child('students').update(updates);
-      }
+      await _dbRef.child('students').set(studentsList);
+      await _dbRef.child('students_trigger').set(realTime.millisecondsSinceEpoch);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push students error: $e");
@@ -5074,11 +5059,16 @@ class StudentDashboardScreen extends StatefulWidget {
 class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   bool _isFetchingData = false;
   bool _isEvicting = false;
+  StreamSubscription? _studentsStreamSub;
+  Timer? _evictionPollTimer;
 
   @override
   void initState() {
     super.initState();
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
+    _initDirectStudentListener();
+    _startEvictionHeartbeat();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
       _verifyStudentStillExists();
@@ -5097,8 +5087,63 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     });
   }
 
+  void _initDirectStudentListener() {
+    _studentsStreamSub?.cancel();
+    _studentsStreamSub = FirebaseDatabase.instance
+        .ref('hostelData_$globalHostelMode/students')
+        .onValue
+        .listen((event) {
+          _checkSnapshotForEviction(event.snapshot);
+        }, onError: (e) {
+          print("Students stream error: $e");
+        });
+  }
+
+  void _startEvictionHeartbeat() {
+    _evictionPollTimer?.cancel();
+    // Fast 2-second heartbeat ensures instant auto-logout even if websocket pauses on web
+    _evictionPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (_isEvicting || !mounted) return;
+      try {
+        final snap = await FirebaseDatabase.instance
+            .ref('hostelData_$globalHostelMode/students')
+            .get();
+        if (snap.exists) {
+          _checkSnapshotForEviction(snap);
+        }
+      } catch (e) {}
+    });
+  }
+
+  void _checkSnapshotForEviction(DataSnapshot snap) {
+    if (_isEvicting || !mounted) return;
+    bool foundCurrentStudent = false;
+
+    if (snap.value != null) {
+      var raw = snap.value;
+      var list = raw is List ? raw : (raw is Map ? raw.values : []);
+      for (var s in list) {
+        if (s != null && s is Map) {
+          String sName = (s['name'] ?? '').toString().trim().toLowerCase();
+          String sRoom = (s['roomNo'] ?? '').toString().trim().toLowerCase();
+          if (sName == widget.name.trim().toLowerCase() &&
+              sRoom == widget.roomNo.trim().toLowerCase()) {
+            foundCurrentStudent = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!foundCurrentStudent) {
+      _executeInstantAutoLogout();
+    }
+  }
+
   @override
   void dispose() {
+    _studentsStreamSub?.cancel();
+    _evictionPollTimer?.cancel();
     globalSyncTrigger.removeListener(_onSync);
     _lunchMsgTimer?.cancel();
     _dinnerMsgTimer?.cancel();
@@ -5115,59 +5160,82 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     if (!SyncService._hasDownloadedOnce) return;
 
     bool stillExists = globalRegisteredStudents.any(
-      (s) => s.name == widget.name && s.roomNo == widget.roomNo,
+      (s) =>
+          s.name.trim().toLowerCase() == widget.name.trim().toLowerCase() &&
+          s.roomNo.trim().toLowerCase() == widget.roomNo.trim().toLowerCase(),
     );
 
     if (!stillExists) {
-      _isEvicting = true;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('userType');
-      await prefs.remove('identifier');
-      await prefs.remove('extraInfo');
-      await prefs.remove('photoPath');
-      await prefs.remove('last_student_name');
-      await prefs.remove('last_student_room');
-      await prefs.remove('last_student_photo');
+      _executeInstantAutoLogout();
+    }
+  }
 
-      if (!mounted) return;
+  void _executeInstantAutoLogout() async {
+    if (_isEvicting) return;
+    _isEvicting = true;
 
-      final navContext = globalNavigatorKey.currentContext ?? context;
-      await showDialog(
-        context: navContext,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-              SizedBox(width: 8),
-              Text('Access Revoked', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: const Text(
-            'Your account has been removed by the Admin.\nPlease contact the Admin to register again.',
-            style: TextStyle(fontSize: 15),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: brandGreen,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
+    _studentsStreamSub?.cancel();
+    _evictionPollTimer?.cancel();
+    SyncService.cancelAllStreams();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('userType');
+    await prefs.remove('identifier');
+    await prefs.remove('extraInfo');
+    await prefs.remove('photoPath');
+    await prefs.remove('last_student_name');
+    await prefs.remove('last_student_room');
+    await prefs.remove('last_student_photo');
+
+    // Immediately redirect to LoginScreen!
+    final nav = globalNavigatorKey.currentState;
+    if (nav != null) {
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
       );
-
-      SyncService.cancelAllStreams();
-      globalNavigatorKey.currentState?.pushAndRemoveUntil(
+    } else if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,
       );
     }
+
+    // Show English alert message on Login Screen
+    Future.delayed(const Duration(milliseconds: 300), () {
+      final navCtx = globalNavigatorKey.currentContext;
+      if (navCtx != null) {
+        showDialog(
+          context: navCtx,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                SizedBox(width: 8),
+                Text('Access Revoked', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: const Text(
+              'Your account has been removed by the Admin.\nPlease contact the Admin to register again.',
+              style: TextStyle(fontSize: 15),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
   }
 
   int _selectedIndex = 0;
@@ -6462,11 +6530,16 @@ class AdminDashboardScreen extends StatefulWidget {
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isFetchingData = false;
   bool _isEvicting = false;
+  StreamSubscription? _adminsStreamSub;
+  Timer? _adminEvictionPollTimer;
 
   @override
   void initState() {
     super.initState();
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
+    _initDirectAdminListener();
+    _startAdminEvictionHeartbeat();
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
       _verifyAdminStillExists();
@@ -6485,8 +6558,61 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  void _initDirectAdminListener() {
+    _adminsStreamSub?.cancel();
+    _adminsStreamSub = FirebaseDatabase.instance
+        .ref('hostelData_$globalHostelMode/admins')
+        .onValue
+        .listen((event) {
+          _checkAdminSnapshotForEviction(event.snapshot);
+        }, onError: (e) {
+          print("Admins stream error: $e");
+        });
+  }
+
+  void _startAdminEvictionHeartbeat() {
+    _adminEvictionPollTimer?.cancel();
+    _adminEvictionPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      if (_isEvicting || !mounted) return;
+      try {
+        final snap = await FirebaseDatabase.instance
+            .ref('hostelData_$globalHostelMode/admins')
+            .get();
+        if (snap.exists) {
+          _checkAdminSnapshotForEviction(snap);
+        }
+      } catch (e) {}
+    });
+  }
+
+  void _checkAdminSnapshotForEviction(DataSnapshot snap) {
+    if (_isEvicting || !mounted) return;
+    if (widget.phone == '9427329977' || widget.phone == '9313279977') return;
+    bool foundCurrentAdmin = false;
+
+    if (snap.value != null) {
+      var raw = snap.value;
+      var list = raw is List ? raw : (raw is Map ? raw.values : []);
+      for (var a in list) {
+        if (a != null && a is Map) {
+          String aPhone = (a['phone'] ?? '').toString().trim();
+          if (aPhone == widget.phone.trim()) {
+            foundCurrentAdmin = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!foundCurrentAdmin) {
+      _executeInstantAdminAutoLogout();
+    }
+  }
+
   @override
   void dispose() {
+    _adminsStreamSub?.cancel();
+    _adminEvictionPollTimer?.cancel();
     globalSyncTrigger.removeListener(_onSync);
     super.dispose();
   }
@@ -6501,58 +6627,79 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     if (!SyncService._hasDownloadedOnce) return;
     if (widget.phone == '9427329977' || widget.phone == '9313279977') return;
 
-    bool stillExists = globalAdmins.any((a) => a.phone == widget.phone);
+    bool stillExists = globalAdmins.any(
+      (a) => a.phone.trim() == widget.phone.trim(),
+    );
 
     if (!stillExists) {
-      _isEvicting = true;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('userType');
-      await prefs.remove('identifier');
-      await prefs.remove('extraInfo');
-      await prefs.remove('photoPath');
-      await prefs.remove('last_admin_phone');
-      await prefs.remove('last_admin_name');
-      await prefs.remove('last_admin_photo');
+      _executeInstantAdminAutoLogout();
+    }
+  }
 
-      if (!mounted) return;
+  void _executeInstantAdminAutoLogout() async {
+    if (_isEvicting) return;
+    _isEvicting = true;
 
-      final navContext = globalNavigatorKey.currentContext ?? context;
-      await showDialog(
-        context: navContext,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
-              SizedBox(width: 8),
-              Text('Access Revoked', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: const Text(
-            'Your Admin account has been removed.\nPlease contact Super Admin.',
-            style: TextStyle(fontSize: 15),
-          ),
-          actions: [
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: brandGreen,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
+    _adminsStreamSub?.cancel();
+    _adminEvictionPollTimer?.cancel();
+    SyncService.cancelAllStreams();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('userType');
+    await prefs.remove('identifier');
+    await prefs.remove('extraInfo');
+    await prefs.remove('photoPath');
+    await prefs.remove('last_admin_phone');
+    await prefs.remove('last_admin_name');
+    await prefs.remove('last_admin_photo');
+
+    final nav = globalNavigatorKey.currentState;
+    if (nav != null) {
+      nav.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
       );
-
-      SyncService.cancelAllStreams();
-      globalNavigatorKey.currentState?.pushAndRemoveUntil(
+    } else if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginScreen()),
         (route) => false,
       );
     }
+
+    Future.delayed(const Duration(milliseconds: 300), () {
+      final navCtx = globalNavigatorKey.currentContext;
+      if (navCtx != null) {
+        showDialog(
+          context: navCtx,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+                SizedBox(width: 8),
+                Text('Access Revoked', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: const Text(
+              'Your Admin account has been removed.\nPlease contact Super Admin.',
+              style: TextStyle(fontSize: 15),
+            ),
+            actions: [
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandGreen,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
   }
 
   List<Map<String, dynamic>> _getPendingDues() {
