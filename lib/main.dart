@@ -7021,7 +7021,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _closeMessAndMarkAbsent(String meal) async {
     try {
       DateTime now = realTime;
-      Map<String, dynamic> batchUpdates = {};
+      List<Future<void>> pushTasks = [];
       
       // Prevent ConcurrentModificationError by creating a copy of the list
       List<RegisteredStudent> studentsCopy = List.from(globalRegisteredStudents);
@@ -7032,21 +7032,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         if (globalAttendanceMap[key] == null) {
           globalAttendanceMap[key] = DailyRecord();
         }
+        
+        bool modified = false;
         if (meal == 'l' &&
             (globalAttendanceMap[key]!.l == '' ||
                 globalAttendanceMap[key]!.l == '-')) {
           globalAttendanceMap[key]!.l = 'A';
-          batchUpdates['$key/l'] = 'A';
+          modified = true;
         } else if (meal == 'd' &&
             (globalAttendanceMap[key]!.d == '' ||
                 globalAttendanceMap[key]!.d == '-')) {
           globalAttendanceMap[key]!.d = 'A';
-          batchUpdates['$key/d'] = 'A';
+          modified = true;
+        }
+        
+        if (modified) {
+          // Use the exact same method students use to guarantee it writes correctly
+          pushTasks.add(SyncService.pushAttendance(key, globalAttendanceMap[key]!));
         }
       }
       
-      if (batchUpdates.isNotEmpty) {
-        await SyncService.pushAttendanceBatch(batchUpdates);
+      if (pushTasks.isNotEmpty) {
+        await Future.wait(pushTasks);
       }
       if (mounted) {
         setState(() {});
