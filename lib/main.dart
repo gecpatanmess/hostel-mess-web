@@ -1112,6 +1112,8 @@ class SyncService {
   static String _lastMenuPath = "";
   static String _lastDownloadedMenuBase64 = "";
   static bool _switchCooldown = false;
+  static bool get isSwitchCooldown => _switchCooldown;
+  static void setSwitchCooldown(bool val) => _switchCooldown = val;
   static bool _pollCooldown = false;
   static StreamSubscription? _firebaseSub;
   static StreamSubscription? _supaNoticesSub;
@@ -7614,6 +7616,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       activeColor: brandGreen,
                       value: globalEntryL,
                       onChanged: (v) async {
+                        if (SyncService.isSwitchCooldown) return;
+                        SyncService.setSwitchCooldown(true);
+                        
                         setState(() => globalEntryL = v);
                         if (v == true) {
                           NotificationService.sendPushNotificationToStudents(
@@ -7632,6 +7637,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       activeColor: brandGreen,
                       value: globalEntryD,
                       onChanged: (v) async {
+                        if (SyncService.isSwitchCooldown) return;
+                        SyncService.setSwitchCooldown(true);
+                        
                         setState(() => globalEntryD = v);
                         if (v == true) {
                           NotificationService.sendPushNotificationToStudents(
