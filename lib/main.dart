@@ -1985,12 +1985,13 @@ class EmailOtpService {
 /// Returns true if OTP was verified successfully, false otherwise.
 Future<bool> showOtpVerificationDialog(
   BuildContext context,
-  String email,
-) async {
+  String email, {
+  bool autoSend = true,
+}) async {
   final result = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
-    builder: (ctx) => _OtpVerificationDialog(email: email),
+    builder: (ctx) => _OtpVerificationDialog(email: email, autoSend: autoSend),
   );
   return result ?? false;
 }
@@ -1998,7 +1999,7 @@ Future<bool> showOtpVerificationDialog(
 class _OtpVerificationDialog extends StatefulWidget {
   final String email;
   final bool autoSend;
-  const _OtpVerificationDialog({required this.email, this.autoSend = false});
+  const _OtpVerificationDialog({required this.email, this.autoSend = true});
   @override
   State<_OtpVerificationDialog> createState() => _OtpVerificationDialogState();
 }
@@ -3537,7 +3538,7 @@ class _LoginScreenState extends State<LoginScreen> {
             await showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (ctx) => _OtpVerificationDialog(email: email),
+              builder: (ctx) => _OtpVerificationDialog(email: email, autoSend: false),
             ) ??
             false;
         if (verified) {
@@ -3595,7 +3596,7 @@ class _LoginScreenState extends State<LoginScreen> {
               await showDialog(
                 context: context,
                 barrierDismissible: false,
-                builder: (ctx) => _OtpVerificationDialog(email: enteredEmail),
+                builder: (ctx) => _OtpVerificationDialog(email: enteredEmail, autoSend: false),
               ) ??
               false;
           if (verified) {
