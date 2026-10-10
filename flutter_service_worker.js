@@ -37,7 +37,7 @@ const RESOURCES = {"assets/AssetManifest.bin": "df66b4017aa0ea4a14c769dcc9244964
 "favicon.png": "013ce332443ff5264af990339993dfd4",
 "firebase-messaging-sw.js": "6781cacca7d1c744a75bf1f2bf3c0393",
 "flutter.js": "24bc71911b75b5f8135c949e27a2984e",
-"flutter_bootstrap.js": "f601be555837ff15ea4fc75cfa28e0d9",
+"flutter_bootstrap.js": "4c4ee30c4e2d1c2fa8900a4d5d5034de",
 "icons/Icon-192.png": "65430f22ea33313b5e65075591f45356",
 "icons/Icon-512.png": "794b2c83f76d4392608bebac5745244a",
 "icons/Icon-maskable-192.png": "65430f22ea33313b5e65075591f45356",
@@ -46,7 +46,7 @@ const RESOURCES = {"assets/AssetManifest.bin": "df66b4017aa0ea4a14c769dcc9244964
 "/": "921a716827ce0b66172851d05d8ddd7a",
 "main.dart.js": "169bb5c38a85d61f8c28cd2f59ce4ae7",
 "manifest.json": "c874c2c2880d04c1dc8d5ed8560eed77",
-"version.json": "649453de3c44318541c986027f485efc"};
+"version.json": "c002940ab963b94b8a58ff5a14b53fc9"};
 // The application shell files that are downloaded before a service worker can
 // start.
 const CORE = ["main.dart.js",
