@@ -3800,7 +3800,7 @@ class _LoginScreenState extends State<LoginScreen> {
     String input = _studentEmailController.text.trim();
     if (input.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter Email or Mobile Number')),
+        const SnackBar(content: Text('Please enter email id')),
       );
       return;
     }
@@ -4319,7 +4319,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 !hasSavedStudent &&
                 !hasSavedAdmin) ...[
               const Text(
-                "Email or Mobile Number",
+                "Email",
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -4331,7 +4331,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _studentEmailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  hintText: "Enter Email (Student) or Mobile Number (Staff)",
+                  hintText: "Enter email id",
                   prefixIcon: const Icon(
                     Icons.account_circle_outlined,
                     color: brandGray,
