@@ -913,7 +913,7 @@ function renderAdminsTable() {
       </td>
       <td class="py-3 px-4 text-[#64748B] capitalize">${admin.location} Hostel DB</td>
       <td class="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
-        <button onclick="openEditAdminModal('${admin.phone}', '${encodeURIComponent(admin.name || '')}', '${admin.role}', '${admin.hostelScope || 'both'}', '${admin.location}')" class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition" title="Edit Role & Scope">
+        <button onclick="openEditAdminModal('${admin.phone}', '${encodeURIComponent(admin.name || '')}', '${admin.role}', '${admin.hostelScope || 'both'}', '${admin.location}', '${encodeURIComponent(admin.email || '')}')" class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition" title="Edit Role & Scope">
           <i class="fa-solid fa-pen-to-square mr-1 text-[#135B26]"></i>Edit
         </button>
         <button onclick="openDeleteConfirmModal('${admin.phone}', '${encodeURIComponent(admin.name || '')}', '${admin.role}', '${admin.location}')" class="px-2.5 py-1 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition" title="Revoke & Delete">
@@ -949,9 +949,10 @@ async function submitNewAdmin() {
 
   if (phone.length !== 10 || !/^\d+$/.test(phone)) return showToast('Please enter a valid 10-digit mobile number', 'error');
   if (!name) return showToast('Please enter user name', 'error');
-  if (pin.length < 8) return showToast('PIN / Password must be at least 8 characters', 'error');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showToast('Email is compulsory! Please enter a valid email address.', 'error');
+  if (pin && pin.length < 8) return showToast('PIN / Password must be at least 8 characters if provided', 'error');
 
-  const hashedPin = await sha256(pin);
+  const hashedPin = pin ? await sha256(pin) : "";
 
   const adminObj = {
     phone: phone,
@@ -960,6 +961,7 @@ async function submitNewAdmin() {
     pin: hashedPin,
     role: role,
     hostelScope: scope,
+    isVerified: false,
     photoUrl: ""
   };
 
@@ -983,12 +985,15 @@ async function submitNewAdmin() {
 }
 
 // Edit Admin / Committee Member Modal
-function openEditAdminModal(phone, encodedName, role, scope, location) {
-  const name = decodeURIComponent(encodedName);
+function openEditAdminModal(phone, encodedName, role, scope, location, encodedEmail) {
+  const name = decodeURIComponent(encodedName || '');
+  const email = decodeURIComponent(encodedEmail || '');
   document.getElementById('editAdminPhone').value = phone;
   document.getElementById('editAdminOldLocation').value = location;
   document.getElementById('editAdminDisplayName').innerText = name || phone;
   document.getElementById('editAdminDisplayPhone').innerText = phone;
+  const emailEl = document.getElementById('editAdminEmail');
+  if (emailEl) emailEl.value = email;
 
   updateRoleDropdowns();
   document.getElementById('editAdminRoleSelect').value = role || 'admin';
@@ -1005,6 +1010,7 @@ async function submitEditAdmin() {
   const phone = document.getElementById('editAdminPhone').value;
   const newRole = document.getElementById('editAdminRoleSelect').value;
   const newScope = document.getElementById('editAdminScopeSelect').value;
+  const emailEl = document.getElementById('editAdminEmail');
 
   if (!phone) return;
 
@@ -1024,6 +1030,14 @@ async function submitEditAdmin() {
 
   if (!existingObj) {
     return showToast('Admin record not found!', 'error');
+  }
+
+  if (emailEl) {
+    const emailVal = emailEl.value.trim();
+    if (!emailVal || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+      return showToast('Valid email is compulsory!', 'error');
+    }
+    existingObj.email = emailVal;
   }
 
   existingObj.role = newRole;

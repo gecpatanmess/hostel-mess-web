@@ -923,6 +923,7 @@ class AdminUser {
   String role;
   String hostelScope; // 'both', 'boys', or 'girls'
   Map<String, bool>? customPermissions;
+  bool isVerified;
 
   AdminUser(
     this.phone,
@@ -933,6 +934,7 @@ class AdminUser {
     this.role = 'admin',
     this.hostelScope = 'both',
     this.customPermissions,
+    this.isVerified = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -943,6 +945,7 @@ class AdminUser {
     'photoUrl': photoUrl,
     'role': role,
     'hostelScope': hostelScope,
+    'isVerified': isVerified,
     if (customPermissions != null) 'customPermissions': customPermissions,
   };
 
@@ -963,6 +966,7 @@ class AdminUser {
       role: (json['role'] ?? 'admin').toString(),
       hostelScope: (json['hostelScope'] ?? 'both').toString(),
       customPermissions: perms,
+      isVerified: json['isVerified'] == true,
     );
   }
 }
@@ -1773,6 +1777,7 @@ class SyncService {
         updates['$i/photoUrl'] = a.photoUrl ?? "";
         updates['$i/role'] = a.role;
         updates['$i/hostelScope'] = a.hostelScope;
+        updates['$i/isVerified'] = a.isVerified;
         if (a.customPermissions != null) {
           updates['$i/customPermissions'] = a.customPermissions;
         }
@@ -1797,6 +1802,41 @@ class SyncService {
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push admins error: $e");
+    }
+  }
+
+  /// Syncs an individual admin record directly to Firebase across both boys/girls databases
+  static Future<void> syncAdminRecord(AdminUser admin) async {
+    for (String mode in ['boys', 'girls']) {
+      try {
+        final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/admins').get();
+        if (snap.exists && snap.value != null) {
+          var snapVal = snap.value;
+          var adminsList = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values.toList() : []);
+          bool matched = false;
+          List<dynamic> updated = [];
+          for (var item in adminsList) {
+            if (item != null) {
+              var map = Map<String, dynamic>.from(item is Map ? item : {});
+              if (map['phone'].toString().trim() == admin.phone.trim()) {
+                map['pin'] = admin.pin;
+                map['isVerified'] = admin.isVerified;
+                map['email'] = admin.email;
+                if (admin.photoUrl != null && admin.photoUrl!.isNotEmpty) {
+                  map['photoUrl'] = admin.photoUrl;
+                }
+                matched = true;
+              }
+              updated.add(map);
+            }
+          }
+          if (matched) {
+            await FirebaseDatabase.instance.ref('hostelData_$mode/admins').set(updated);
+          }
+        }
+      } catch (e) {
+        print("syncAdminRecord error for $mode: $e");
+      }
     }
   }
 
@@ -2671,6 +2711,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _adminNameController.text = savedAdminName ?? "";
         adminPhotoUrl = savedAdminPhoto;
         isStudent = false;
+        _isAdminFlow = true;
       }
     });
   }
@@ -2699,11 +2740,16 @@ class _LoginScreenState extends State<LoginScreen> {
     cachedAdminScope = null;
     setState(() {
       hasSavedAdmin = false;
+      _isAdminFlow = false;
+      _matchedAdmin = null;
       _adminMobileController.clear();
       _adminNameController.clear();
       adminPhotoUrl = null;
       _adminPasswordController.clear();
       _adminEmailVerified = false;
+      _studentPinController.clear();
+      _studentRePinController.clear();
+      _authStage = AuthStage.identifier;
     });
   }
 
@@ -3100,6 +3146,28 @@ class _LoginScreenState extends State<LoginScreen> {
           emailToSend = admin.email;
         } catch (e) {}
       }
+      if (emailToSend == null || emailToSend.isEmpty) {
+        String searchPhone = targetIdentifier ?? _studentEmailController.text.trim();
+        if (searchPhone.length == 10) {
+          for (String mode in ['boys', 'girls']) {
+            try {
+              final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/admins').get();
+              if (snap.exists && snap.value != null) {
+                var snapVal = snap.value;
+                var list = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values : []);
+                for (var a in list) {
+                  if (a != null && a['phone'] == searchPhone) {
+                    emailToSend = (a['email'] ?? '').toString();
+                    targetIdentifier = searchPhone;
+                    break;
+                  }
+                }
+              }
+            } catch (e) {}
+            if (emailToSend != null && emailToSend.isNotEmpty) break;
+          }
+        }
+      }
       if (targetIdentifier == null || targetIdentifier.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -3296,12 +3364,27 @@ class _LoginScreenState extends State<LoginScreen> {
           await saveRegisteredStudents();
           await SyncService.updateStudentTargeted(existingStudent);
         } else {
-          var admin =
-              _matchedAdmin ??
-              globalAdmins.firstWhere(
-                (a) => a.phone == (savedAdminPhone ?? ''),
-              );
-          admin.pin = hashPassword(newPassCtrl.text);
+          AdminUser? admin = _matchedAdmin;
+          if (admin == null && targetIdentifier != null) {
+            try {
+              admin = globalAdmins.firstWhere((a) => a.phone == targetIdentifier);
+            } catch (e) {}
+          }
+          String hashed = hashPassword(newPassCtrl.text);
+          if (admin != null) {
+            admin.pin = hashed;
+            admin.isVerified = true;
+            await SyncService.syncAdminRecord(admin);
+            int idx = globalAdmins.indexWhere((a) => a.phone == admin!.phone);
+            if (idx != -1) {
+              globalAdmins[idx] = admin;
+            } else {
+              globalAdmins.add(admin);
+            }
+          } else if (targetIdentifier != null) {
+            AdminUser dummyAdmin = AdminUser(targetIdentifier, hashed, isVerified: true);
+            await SyncService.syncAdminRecord(dummyAdmin);
+          }
           final prefs = await SharedPreferences.getInstance();
           await prefs.setStringList(
             'globalAdmins',
@@ -3761,20 +3844,54 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _isVerifyingEmail = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Invalid Email format')));
+        ).showSnackBar(const SnackBar(content: Text('Mobile number not found in staff records.')));
         return;
       }
-      setState(() {
-        _isVerifyingEmail = false;
-        if (_matchedAdmin!.pin.isNotEmpty &&
-            _matchedAdmin!.pin != 'Hostel@123' &&
-            _matchedAdmin!.pin != hashPassword('Hostel@123')) {
+      bool isFirstTime = _matchedAdmin!.pin.isEmpty ||
+          !_matchedAdmin!.isVerified ||
+          _matchedAdmin!.pin == 'Hostel@123' ||
+          _matchedAdmin!.pin == hashPassword('Hostel@123');
+
+      if (isFirstTime) {
+        if (_matchedAdmin!.email.trim().isEmpty) {
+          setState(() => _isVerifyingEmail = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No email registered for this staff account. Please contact Super Admin.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+          return;
+        }
+
+        bool verified = await showOtpVerificationDialog(
+          context,
+          _matchedAdmin!.email.trim(),
+          autoSend: true,
+        );
+        setState(() => _isVerifyingEmail = false);
+        if (verified) {
+          setState(() {
+            _authStage = AuthStage.newPassword;
+            adminPhotoUrl = _matchedAdmin!.photoUrl;
+            _studentPinController.clear();
+            _studentRePinController.clear();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Email verified! Please create your password.'),
+              backgroundColor: brandGreen,
+            ),
+          );
+        }
+      } else {
+        setState(() {
+          _isVerifyingEmail = false;
           _authStage = AuthStage.personalPassword;
           adminPhotoUrl = _matchedAdmin!.photoUrl;
-        } else {
-          _authStage = AuthStage.standardPassword;
-        }
-      });
+          _studentPinController.clear();
+        });
+      }
       return;
     } // === STUDENT FLOW ===
     _isAdminFlow = false;
@@ -3862,72 +3979,47 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleUnifiedAction() async {
     String typedPin = _studentPinController.text.trim();
-    if (_isAdminFlow) {
-      if (_authStage == AuthStage.standardPassword) {
-        if (typedPin != 'Hostel@123') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Invalid Standard Password!')),
-          );
-          return;
-        } // Standard password correct -> show email input
-        setState(() {
-          _authStage = AuthStage.adminEmail;
-          _studentPinController.clear();
-        });
-      } else if (_authStage == AuthStage.adminEmail) {
-        // Verify admin email matches
-        String enteredEmail = _adminEmailController.text.trim().toLowerCase();
-        if (enteredEmail.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter your email')),
-          );
-          return;
-        }
-        if (_matchedAdmin!.email.toLowerCase() != enteredEmail) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Email does not match. Access denied.'),
-            ),
-          );
-          return;
-        } // Email matches -> send OTP
-        setState(() => _isVerifyingEmail = true);
-        Map<String, dynamic> res = await EmailOtpService.sendOtp(enteredEmail);
-        bool sent = res['success'] == true;
-        setState(() => _isVerifyingEmail = false);
-        if (sent) {
-          bool verified =
-              await showDialog(
-                context: context,
-                barrierDismissible: false,
-                builder: (ctx) => _OtpVerificationDialog(email: enteredEmail, autoSend: false),
-              ) ??
-              false;
-          if (verified) {
-            if (_matchedAdmin!.pin.isNotEmpty &&
-                _matchedAdmin!.pin != 'Hostel@123' &&
-                _matchedAdmin!.pin != hashPassword('Hostel@123')) {
-              setState(() {
-                _authStage = AuthStage.personalPassword;
-                adminPhotoUrl = _matchedAdmin!.photoUrl;
-                _studentPinController.clear();
-              });
-            } else {
-              setState(() {
-                _authStage = AuthStage.newPassword;
-                _studentPinController.clear();
-              });
+    if (_isAdminFlow || (_authStage == AuthStage.personalPassword && hasSavedAdmin)) {
+      if (_authStage == AuthStage.personalPassword) {
+        AdminUser? admin = _matchedAdmin;
+        if (admin == null && hasSavedAdmin && savedAdminPhone != null) {
+          try {
+            admin = globalAdmins.firstWhere((a) => a.phone == savedAdminPhone);
+          } catch (e) {}
+          if (admin == null) {
+            for (String mode in ['boys', 'girls']) {
+              try {
+                final snap = await FirebaseDatabase.instance.ref('hostelData_$mode/admins').get();
+                if (snap.exists && snap.value != null) {
+                  var snapVal = snap.value;
+                  var adminsList = snapVal is List ? snapVal : (snapVal is Map ? snapVal.values : []);
+                  for (var a in adminsList) {
+                    if (a != null && a['phone'] == savedAdminPhone) {
+                      admin = AdminUser.fromJson(Map<String, dynamic>.from(a));
+                      globalHostelMode = mode;
+                      break;
+                    }
+                  }
+                }
+              } catch (e) {}
+              if (admin != null) break;
             }
           }
-        } else {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Failed to send OTP.')));
         }
-      } else if (_authStage == AuthStage.personalPassword) {
+        if (admin == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Staff record not found. Please contact Super Admin.')),
+          );
+          return;
+        }
         String hashed = hashPassword(typedPin);
-        if (_matchedAdmin!.pin == typedPin || _matchedAdmin!.pin == hashed) {
-          await _finalizeAdminLogin(_matchedAdmin!);
+        if (admin.pin == typedPin || admin.pin == hashed) {
+          if (admin.pin == typedPin) {
+            admin.pin = hashed;
+            admin.isVerified = true;
+            await SyncService.syncAdminRecord(admin);
+          }
+          await _finalizeAdminLogin(admin);
         } else {
           ScaffoldMessenger.of(
             context,
@@ -3941,18 +4033,33 @@ class _LoginScreenState extends State<LoginScreen> {
           ).showSnackBar(SnackBar(content: Text(validationError)));
           return;
         }
-        if (typedPin != _studentRePinController.text) {
+        if (typedPin != _studentRePinController.text.trim()) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Passwords do not match!')),
           );
           return;
         }
-        _matchedAdmin!.pin = hashPassword(typedPin);
-        _matchedAdmin!.photoUrl = studentPhotoUrl;
+        if (_matchedAdmin == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Staff record not found!')),
+          );
+          return;
+        }
+        String hashed = hashPassword(typedPin);
+        _matchedAdmin!.pin = hashed;
+        _matchedAdmin!.isVerified = true;
+        if (studentPhotoUrl != null && studentPhotoUrl!.isNotEmpty) {
+          _matchedAdmin!.photoUrl = studentPhotoUrl;
+        }
+        await SyncService.syncAdminRecord(_matchedAdmin!);
         int idx = globalAdmins.indexWhere(
           (a) => a.phone == _matchedAdmin!.phone,
         );
-        if (idx != -1) globalAdmins[idx] = _matchedAdmin!;
+        if (idx != -1) {
+          globalAdmins[idx] = _matchedAdmin!;
+        } else {
+          globalAdmins.add(_matchedAdmin!);
+        }
         final p = await SharedPreferences.getInstance();
         await p.setStringList(
           'globalAdmins',
@@ -4225,7 +4332,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 !hasSavedStudent &&
                 !hasSavedAdmin) ...[
               const Text(
-                "Registered Email",
+                "Email or Mobile Number",
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -4237,9 +4344,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _studentEmailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  hintText: "Enter registered email",
+                  hintText: "Enter Email (Student) or Mobile Number (Staff)",
                   prefixIcon: const Icon(
-                    Icons.email_outlined,
+                    Icons.account_circle_outlined,
                     color: brandGray,
                     size: 20,
                   ),
@@ -4286,119 +4393,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
-            ], // === STAGE: STANDARD PASSWORD (Admin only) ===
-            if (_authStage == AuthStage.standardPassword) ...[
-              const Center(
-                child: Icon(
-                  Icons.admin_panel_settings,
-                  color: brandGreen,
-                  size: 48,
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Center(
-                child: Text(
-                  "Admin Verification",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: brandDark,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                "Standard Password",
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: brandDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _studentPinController,
-                obscureText: !isStudentPinVisible,
-                onChanged: (val) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: "Enter standard password",
-                  prefixIcon: const Icon(
-                    Icons.lock_outline,
-                    color: brandGray,
-                    size: 20,
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      isStudentPinVisible
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                      color: brandGray,
-                      size: 20,
-                    ),
-                    onPressed: () => setState(
-                      () => isStudentPinVisible = !isStudentPinVisible,
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: brandInputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildActionButton("Verify", _handleUnifiedAction),
-              const SizedBox(height: 12),
-              _buildBackButton(),
-            ], // === STAGE: ADMIN EMAIL (after standard password) ===
-            if (_authStage == AuthStage.adminEmail) ...[
-              const Center(
-                child: Icon(Icons.email, color: brandGreen, size: 48),
-              ),
-              const SizedBox(height: 12),
-              const Center(
-                child: Text(
-                  "Email Verification",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: brandDark,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                "Your Registered Email",
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: brandDark,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: _adminEmailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  hintText: "Enter your registered email",
-                  prefixIcon: const Icon(
-                    Icons.email_outlined,
-                    color: brandGray,
-                    size: 20,
-                  ),
-                  filled: true,
-                  fillColor: brandInputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildActionButton("Send OTP", _handleUnifiedAction),
-              const SizedBox(height: 12),
-              _buildBackButton(),
             ], // === STAGE: PERSONAL PASSWORD / NEW PASSWORD / QUICK LOGIN ===
             if (_authStage == AuthStage.personalPassword ||
                 _authStage == AuthStage.newPassword ||

@@ -760,13 +760,13 @@
         </div>
 
         <div>
-          <label class="block font-bold text-[#64748B] mb-1">Email (Optional)</label>
-          <input type="email" id="newAdminEmail" placeholder="admin@example.com" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
+          <label class="block font-bold text-[#64748B] mb-1">Email <span class="text-rose-500 font-bold">*</span> (Compulsory for Login Verification)</label>
+          <input type="email" id="newAdminEmail" required placeholder="staff@example.com" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
         </div>
 
         <div>
-          <label class="block font-bold text-[#64748B] mb-1">PIN / Password (min 8 chars)</label>
-          <input type="password" id="newAdminPin" placeholder="••••••••" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
+          <label class="block font-bold text-[#64748B] mb-1">Initial Password <span class="text-slate-400 font-normal text-[11px]">(Optional - User sets on 1st login)</span></label>
+          <input type="password" id="newAdminPin" placeholder="Leave empty for user self-setup on first login" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
         </div>
 
         <div>
@@ -818,6 +818,11 @@
             <div id="editAdminDisplayName" class="font-extrabold text-[#0F172A] text-sm">-</div>
             <div id="editAdminDisplayPhone" class="font-mono text-emerald-800 text-xs">-</div>
           </div>
+        </div>
+
+        <div>
+          <label class="block font-bold text-[#64748B] mb-1">Email <span class="text-rose-500 font-bold">*</span> (For Login OTP)</label>
+          <input type="email" id="editAdminEmail" placeholder="staff@example.com" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
         </div>
 
         <div>
