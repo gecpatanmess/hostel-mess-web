@@ -673,62 +673,41 @@
         <div class="pt-2">
           <div class="flex items-center justify-between mb-2">
             <label class="text-xs font-bold text-[#0F172A]">Initial Permissions Configuration:</label>
-            <div class="flex items-center gap-2 text-[11px]">
+            <div class="flex items-center gap-2 text-[11px] flex-wrap">
               <button type="button" onclick="selectAllRolePerms(true)" class="text-[#135B26] font-bold hover:underline">Select All</button>
               <span class="text-slate-300">|</span>
               <button type="button" onclick="selectAllRolePerms(false)" class="text-slate-500 font-semibold hover:underline">Deselect All</button>
+              <span class="text-slate-300">|</span>
+              <button type="button" onclick="deleteAllRolePerms()" class="text-red-600 font-bold hover:underline">Delete All</button>
+              <span class="text-slate-300">|</span>
+              <button type="button" onclick="toggleInlineAddPermBox(true)" class="text-[#135B26] font-extrabold hover:underline flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                <i class="fa-solid fa-plus text-[10px]"></i>
+                <span>Add</span>
+              </button>
             </div>
           </div>
-          <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-poll text-[#135B26] w-4 text-center"></i>
-                <span>Mess Polls (Create/Vote/View Results)</span>
-              </span>
-              <input type="checkbox" id="perm_new_polls" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-utensils text-[#135B26] w-4 text-center"></i>
-                <span>Meal Management (Meal Switches & Menus)</span>
-              </span>
-              <input type="checkbox" id="perm_new_meals" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-calendar-check text-[#135B26] w-4 text-center"></i>
-                <span>View Attendance (View Monthly Sheets)</span>
-              </span>
-              <input type="checkbox" id="perm_new_att_view" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-pen-to-square text-[#135B26] w-4 text-center"></i>
-                <span>Modify Attendance (Edit Attendance Records)</span>
-              </span>
-              <input type="checkbox" id="perm_new_att_edit" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-user-graduate text-[#135B26] w-4 text-center"></i>
-                <span>Student Management (Add/Delete/Rooms)</span>
-              </span>
-              <input type="checkbox" id="perm_new_students" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-triangle-exclamation text-[#135B26] w-4 text-center"></i>
-                <span>Complaints Access (View Complaints)</span>
-              </span>
-              <input type="checkbox" id="perm_new_complaints" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
-            <label class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs cursor-pointer hover:bg-slate-100 transition border border-transparent hover:border-slate-200">
-              <span class="font-medium text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-bullhorn text-[#135B26] w-4 text-center"></i>
-                <span>Notice Board (Broadcast & Delete Notices)</span>
-              </span>
-              <input type="checkbox" id="perm_new_notices" class="w-4 h-4 accent-[#135B26] rounded">
-            </label>
+
+          <!-- Inline Add Custom Permission Box -->
+          <div id="inlineAddPermBox" class="hidden p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2 mb-2 text-xs">
+            <div class="font-bold text-[#135B26] flex items-center justify-between">
+              <span>Add Custom Permission:</span>
+              <button type="button" onclick="toggleInlineAddPermBox(false)" class="text-slate-400 hover:text-slate-700">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input type="text" id="customPermKeyInput" placeholder="Key (e.g. food_testing)" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono focus:border-[#135B26] focus:outline-none">
+              <input type="text" id="customPermLabelInput" placeholder="Label (e.g. Food Quality Check)" class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:border-[#135B26] focus:outline-none">
+            </div>
+            <div class="flex justify-end gap-2 pt-1">
+              <button type="button" onclick="toggleInlineAddPermBox(false)" class="px-3 py-1 text-slate-500 font-semibold hover:underline text-xs">Cancel</button>
+              <button type="button" onclick="confirmAddCustomPerm()" class="px-3 py-1 bg-[#135B26] hover:bg-[#0E441C] text-white rounded-lg font-bold text-xs shadow-sm">Save Permission</button>
+            </div>
+          </div>
+
+          <!-- Permissions List (Dynamically Rendered with Checkboxes and Individual Delete Actions) -->
+          <div id="createRolePermList" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+            <!-- Rendered by JS -->
           </div>
         </div>
       </div>

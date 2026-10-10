@@ -1050,10 +1050,14 @@ String getAdminRoleDisplayName(String phone) {
     if (globalRoles.containsKey(admin.role) && globalRoles[admin.role]!.name.isNotEmpty) {
       return globalRoles[admin.role]!.name;
     }
+    final normRole = admin.role.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+    if (globalRoles.containsKey(normRole) && globalRoles[normRole]!.name.isNotEmpty) {
+      return globalRoles[normRole]!.name;
+    }
     if (admin.role == 'super_admin') return 'Super Admin';
-    if (admin.role == 'mess_committee') return 'Mess Committee';
-    if (admin.role == 'professor') return 'Professor / Warden';
-    if (admin.role == 'admin') return 'Admin';
+    if (normRole == 'mess_committee' || normRole == 'mess_commitee') return 'Mess Committee';
+    if (normRole == 'professor') return 'Professor / Warden';
+    if (normRole == 'admin') return 'Hostel Admin';
     return admin.role
         .replaceAll('_', ' ')
         .split(' ')
@@ -4516,13 +4520,57 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: const TextStyle(fontSize: 14, color: brandGray),
                       ),
                     ] else if (_isAdminFlow || hasSavedAdmin) ...[
-                      const Text(
-                        "Admin",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: brandDark,
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final targetPhone = _matchedAdmin?.phone ?? (hasSavedAdmin ? (savedAdminPhone ?? '') : '');
+                          String roleTitle = '';
+                          if (_matchedAdmin != null) {
+                            if (globalRoles.containsKey(_matchedAdmin!.role) && globalRoles[_matchedAdmin!.role]!.name.isNotEmpty) {
+                              roleTitle = globalRoles[_matchedAdmin!.role]!.name;
+                            } else {
+                              final normRole = _matchedAdmin!.role.trim().toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '_');
+                              if (globalRoles.containsKey(normRole) && globalRoles[normRole]!.name.isNotEmpty) {
+                                roleTitle = globalRoles[normRole]!.name;
+                              }
+                            }
+                          }
+                          if (roleTitle.isEmpty && targetPhone.isNotEmpty) {
+                            roleTitle = getAdminRoleDisplayName(targetPhone);
+                          }
+                          if (roleTitle.isEmpty) roleTitle = 'Admin';
+                          final userName = _matchedAdmin?.name ?? (hasSavedAdmin ? (savedAdminName ?? '') : '');
+                          return Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: brandGreen.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: brandGreen.withValues(alpha: 0.25)),
+                                ),
+                                child: Text(
+                                  roleTitle,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: brandGreen,
+                                  ),
+                                ),
+                              ),
+                              if (userName.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  userName,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: brandDark,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          );
+                        },
                       ),
                     ] else ...[
                       Text(
@@ -7168,10 +7216,77 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (checkAdminPermission(widget.phone, 'can_manage_meals')) ...[
+          Card(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.restaurant, color: brandDark, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        "Quick Mess Entry",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: brandDark,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Lunch Mess Open', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    activeColor: brandGreen,
+                    value: globalEntryL,
+                    onChanged: (v) async {
+                      if (SyncService.isSwitchCooldown) return;
+                      SyncService.setSwitchCooldown(true);
+                      setState(() => globalEntryL = v);
+                      if (v == true) {
+                        NotificationService.sendPushNotificationToStudents("Lunch Time", "Mess Open");
+                      } else {
+                        await _closeMessAndMarkAbsent('l');
+                      }
+                      await SyncService.pushSwitchesNow();
+                    },
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Dinner Mess Open', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    activeColor: brandGreen,
+                    value: globalEntryD,
+                    onChanged: (v) async {
+                      if (SyncService.isSwitchCooldown) return;
+                      SyncService.setSwitchCooldown(true);
+                      setState(() => globalEntryD = v);
+                      if (v == true) {
+                        NotificationService.sendPushNotificationToStudents("Dinner Time", "Mess Open");
+                      } else {
+                        await _closeMessAndMarkAbsent('d');
+                      }
+                      await SyncService.pushSwitchesNow();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         ...(() {
           final allPolls = SyncService.dynamicPolls.values.toList()
             ..sort((a, b) => b.startTime.compareTo(a.startTime));
-          if (allPolls.isEmpty) return <Widget>[const SizedBox.shrink()];
+          if (allPolls.isEmpty || !checkAdminPermission(widget.phone, 'can_manage_polls')) return <Widget>[const SizedBox.shrink()];
           return <Widget>[
             const Padding(
               padding: EdgeInsets.only(left: 4, bottom: 8, top: 8),
@@ -7341,7 +7456,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         })(),
         ...(() {
           var dues = _getPendingDues();
-          if (dues.isEmpty) return <Widget>[const SizedBox.shrink()];
+          if (dues.isEmpty || (!checkAdminPermission(widget.phone, 'can_students_manage') && !checkAdminPermission(widget.phone, 'can_attendance'))) return <Widget>[const SizedBox.shrink()];
           return <Widget>[
             Card(
               color: Colors.white,

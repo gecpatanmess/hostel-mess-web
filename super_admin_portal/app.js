@@ -546,6 +546,104 @@ const permissionLabels = {
   can_manage_admins: { label: "Admin Management (Add/Manage Staff)", icon: "fa-user-shield" }
 };
 
+const defaultStandardPerms = {
+  can_manage_polls: { label: "Mess Polls (Create/Vote/View Results)", icon: "fa-poll", checked: true },
+  can_manage_meals: { label: "Meal Management (Meal Switches & Menus)", icon: "fa-utensils", checked: true },
+  can_attendance: { label: "View Attendance (View Monthly Sheets)", icon: "fa-calendar-check", checked: false },
+  can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square", checked: false },
+  can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate", checked: false },
+  can_complaints: { label: "Complaints Access (View Complaints)", icon: "fa-triangle-exclamation", checked: true },
+  can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn", checked: true },
+  can_manage_admins: { label: "Admin Management (Add/Manage Staff)", icon: "fa-user-shield", checked: false }
+};
+
+let modalPermsState = JSON.parse(JSON.stringify(defaultStandardPerms));
+
+function renderCreateRolePermsList() {
+  const container = document.getElementById('createRolePermList');
+  if (!container) return;
+  container.innerHTML = '';
+  const keys = Object.keys(modalPermsState);
+  if (keys.length === 0) {
+    container.innerHTML = `
+      <div class="p-4 text-center text-xs text-slate-400 italic bg-slate-50 rounded-xl border border-dashed border-slate-200">
+        No permissions in list. Click <strong>+ Add</strong> above to add initial permissions.
+      </div>`;
+    return;
+  }
+  keys.forEach(key => {
+    const item = modalPermsState[key];
+    const row = document.createElement('div');
+    row.className = "flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs hover:bg-slate-100 transition border border-transparent hover:border-slate-200";
+    row.innerHTML = `
+      <label class="flex items-center gap-2 cursor-pointer flex-1 mr-2 select-none">
+        <input type="checkbox" id="perm_cb_${key}" ${item.checked ? 'checked' : ''} onchange="modalPermsState['${key}'].checked = this.checked" class="w-4 h-4 accent-[#135B26] rounded">
+        <i class="fa-solid ${item.icon || 'fa-shield-halved'} text-[#135B26] w-4 text-center"></i>
+        <span class="font-medium text-[#0F172A]">${item.label}</span>
+      </label>
+      <button type="button" onclick="deleteSinglePermFromModal('${key}')" class="text-slate-400 hover:text-red-600 p-1 rounded transition" title="Delete this permission">
+        <i class="fa-solid fa-trash-can text-xs"></i>
+      </button>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function selectAllRolePerms(selectAll) {
+  Object.keys(modalPermsState).forEach(k => {
+    modalPermsState[k].checked = !!selectAll;
+    const el = document.getElementById(`perm_cb_${k}`);
+    if (el) el.checked = !!selectAll;
+  });
+}
+
+function deleteAllRolePerms() {
+  if (Object.keys(modalPermsState).length === 0) return;
+  if (!confirm("Are you sure you want to delete all initial permissions from this list?")) return;
+  modalPermsState = {};
+  renderCreateRolePermsList();
+  showToast("All initial permissions removed from list.", "info");
+}
+
+function deleteSinglePermFromModal(key) {
+  delete modalPermsState[key];
+  renderCreateRolePermsList();
+}
+
+function toggleInlineAddPermBox(show) {
+  const box = document.getElementById('inlineAddPermBox');
+  if (!box) return;
+  if (show) {
+    box.classList.remove('hidden');
+    document.getElementById('customPermKeyInput').value = '';
+    document.getElementById('customPermLabelInput').value = '';
+    document.getElementById('customPermKeyInput').focus();
+  } else {
+    box.classList.add('hidden');
+  }
+}
+
+function confirmAddCustomPerm() {
+  const rawKey = document.getElementById('customPermKeyInput').value.trim();
+  const label = document.getElementById('customPermLabelInput').value.trim();
+  if (!rawKey || !label) {
+    showToast("Please enter both Key and Label", "error");
+    return;
+  }
+  const key = rawKey.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  modalPermsState[key] = {
+    label: label,
+    icon: "fa-shield-halved",
+    checked: true
+  };
+  if (!permissionLabels[key]) {
+    permissionLabels[key] = { label: label, icon: "fa-shield-halved" };
+  }
+  toggleInlineAddPermBox(false);
+  renderCreateRolePermsList();
+  showToast(`Added '${label}'!`, "success");
+}
+
 function renderRolesGrid() {
   const container = document.getElementById('rolesListContainer');
   if (!container) return;
@@ -556,26 +654,43 @@ function renderRolesGrid() {
     const card = document.createElement('div');
     card.className = "app-card p-5 space-y-4 hover:shadow-md transition";
 
+    const rolePerms = roleData.permissions || {};
+    Object.keys(rolePerms).forEach(k => {
+      if (!permissionLabels[k]) {
+        permissionLabels[k] = { label: k.replace(/_/g, ' ').toUpperCase(), icon: "fa-shield-halved" };
+      }
+    });
+
+    const allKeys = Array.from(new Set([...Object.keys(rolePerms), ...Object.keys(permissionLabels)]));
     let activeCount = 0;
     let togglesHtml = '';
-    Object.entries(permissionLabels).forEach(([permKey, permMeta]) => {
-      const isChecked = roleData.permissions && roleData.permissions[permKey] === true;
+
+    allKeys.forEach(permKey => {
+      const permMeta = permissionLabels[permKey] || { label: permKey, icon: "fa-shield-halved" };
+      const isChecked = rolePerms[permKey] === true;
       if (isChecked) activeCount++;
       togglesHtml += `
         <div class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl border border-slate-200/70 hover:border-slate-300 transition">
-          <div class="flex items-center gap-2.5">
-            <i class="fa-solid ${permMeta.icon} text-[#135B26] text-xs w-4 text-center"></i>
+          <div class="flex items-center gap-2.5 flex-1 pr-2">
+            <i class="fa-solid ${permMeta.icon || 'fa-shield-halved'} text-[#135B26] text-xs w-4 text-center"></i>
             <span class="text-xs font-semibold text-[#0F172A]">${permMeta.label}</span>
           </div>
-          <label class="switch">
-            <input type="checkbox" ${isChecked ? 'checked' : ''} ${isRoot ? 'disabled' : ''} onchange="togglePermission('${roleId}', '${permKey}', this.checked)">
-            <span class="slider"></span>
-          </label>
+          <div class="flex items-center gap-2 shrink-0">
+            <label class="switch">
+              <input type="checkbox" ${isChecked ? 'checked' : ''} ${isRoot ? 'disabled' : ''} onchange="togglePermission('${roleId}', '${permKey}', this.checked)">
+              <span class="slider"></span>
+            </label>
+            ${!isRoot ? `
+              <button onclick="deletePermissionFromRole('${roleId}', '${permKey}')" class="text-slate-400 hover:text-red-600 p-1 transition" title="Delete permission from role">
+                <i class="fa-solid fa-trash-can text-[11px]"></i>
+              </button>
+            ` : ''}
+          </div>
         </div>
       `;
     });
 
-    const totalPerms = Object.keys(permissionLabels).length;
+    const totalPerms = allKeys.length;
 
     card.innerHTML = `
       <div class="flex items-center justify-between pb-3 border-b border-slate-100 flex-wrap gap-2">
@@ -599,6 +714,14 @@ function renderRolesGrid() {
       <div class="space-y-2">
         ${togglesHtml}
       </div>
+      ${!isRoot ? `
+        <div class="pt-2 border-t border-slate-100 flex justify-end">
+          <button onclick="addPermissionToRole('${roleId}')" class="text-xs text-[#135B26] hover:text-[#0E441C] font-bold flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-xl transition">
+            <i class="fa-solid fa-plus text-[11px]"></i>
+            <span>Add Permission</span>
+          </button>
+        </div>
+      ` : ''}
     `;
     container.appendChild(card);
   });
@@ -614,18 +737,42 @@ async function togglePermission(roleId, permKey, isChecked) {
   }
 }
 
-function selectAllRolePerms(selectAll) {
-  const permKeys = ['polls', 'meals', 'att_view', 'att_edit', 'students', 'complaints', 'notices'];
-  permKeys.forEach(k => {
-    const el = document.getElementById(`perm_new_${k}`);
-    if (el) el.checked = !!selectAll;
-  });
+async function deletePermissionFromRole(roleId, permKey) {
+  if (roleId === 'super_admin') return showToast("Cannot delete permissions from Super Admin", "error");
+  if (!confirm(`Are you sure you want to permanently delete permission '${permKey}' from role '${roleId}'?`)) return;
+  try {
+    await db.ref(`roles/${roleId}/permissions/${permKey}`).remove();
+    await logAudit('PERMISSION_DELETED', `Deleted permission ${permKey} from role ${roleId}`);
+    showToast(`Permission '${permKey}' removed from role '${roleId}'`, 'info');
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  }
+}
+
+async function addPermissionToRole(roleId) {
+  const permKeyRaw = prompt("Enter Permission Identifier Key (e.g. food_check, gate_pass):");
+  if (!permKeyRaw) return;
+  const permKey = permKeyRaw.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+  const permLabel = prompt("Enter Permission Display Label (e.g. Food Quality Testing):") || permKey;
+  
+  if (!permissionLabels[permKey]) {
+    permissionLabels[permKey] = { label: permLabel, icon: "fa-shield-halved" };
+  }
+  try {
+    await db.ref(`roles/${roleId}/permissions/${permKey}`).set(true);
+    await logAudit('PERMISSION_ADDED', `Added permission ${permKey} to role ${roleId}`);
+    showToast(`Added '${permLabel}' to role '${roleId}' (set to ON)!`, 'success');
+  } catch (e) {
+    showToast(`Error: ${e.message}`, 'error');
+  }
 }
 
 function openCreateRoleModal() {
   document.getElementById('newRoleId').value = '';
   document.getElementById('newRoleName').value = '';
-  selectAllRolePerms(false);
+  modalPermsState = JSON.parse(JSON.stringify(defaultStandardPerms));
+  toggleInlineAddPermBox(false);
+  renderCreateRolePermsList();
   document.getElementById('modalCreateRole').classList.remove('hidden');
 }
 
@@ -640,23 +787,17 @@ async function submitNewRole() {
   if (!roleId || !roleName) return showToast('Please enter Role ID and Display Name', 'error');
   if (cachedRoles[roleId]) return showToast('Role with this ID already exists', 'error');
 
-  const perms = {
-    can_manage_polls: document.getElementById('perm_new_polls').checked,
-    can_manage_meals: document.getElementById('perm_new_meals').checked,
-    can_attendance: document.getElementById('perm_new_att_view').checked,
-    can_attendance_edit: document.getElementById('perm_new_att_edit').checked,
-    can_students_manage: document.getElementById('perm_new_students').checked,
-    can_complaints: document.getElementById('perm_new_complaints').checked,
-    can_notices: document.getElementById('perm_new_notices').checked,
-    can_manage_admins: false
-  };
+  const perms = {};
+  Object.keys(modalPermsState).forEach(k => {
+    perms[k] = modalPermsState[k].checked === true;
+  });
 
   await db.ref(`roles/${roleId}`).set({
     name: roleName,
     permissions: perms
   });
 
-  await logAudit('ROLE_CREATED', `Created new role '${roleName}' (${roleId}) with customized toggles`);
+  await logAudit('ROLE_CREATED', `Created new role '${roleName}' (${roleId}) with customized initial permissions`);
   closeCreateRoleModal();
   showToast(`Role '${roleName}' created successfully!`, 'success');
 }
