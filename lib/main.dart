@@ -1068,11 +1068,25 @@ Future<void> _loadDataFromPrefs() async {
     String? photoUrl = prefs.getString('photoPath');
     String? room = prefs.getString('extraInfo');
     if (name != null && room != null) {
-      initialScreen = StudentDashboardScreen(
-        photoUrl: photoUrl,
-        name: name,
-        roomNo: room,
+      bool existsInCache = globalRegisteredStudents.any(
+        (s) => s.name == name && s.roomNo == room,
       );
+      if (globalRegisteredStudents.isNotEmpty && !existsInCache) {
+        await prefs.remove('userType');
+        await prefs.remove('identifier');
+        await prefs.remove('extraInfo');
+        await prefs.remove('photoPath');
+        await prefs.remove('last_student_name');
+        await prefs.remove('last_student_room');
+        await prefs.remove('last_student_photo');
+        initialScreen = const LoginScreen();
+      } else {
+        initialScreen = StudentDashboardScreen(
+          photoUrl: photoUrl,
+          name: name,
+          roomNo: room,
+        );
+      }
     }
   }
 }
@@ -1375,6 +1389,8 @@ class SyncService {
             }
           }
         }
+        await saveRegisteredStudents();
+        _hasDownloadedOnce = true;
       } // 2. Fetch from Supabase
       final noticesData = await _supabase
           .from('notices_$globalHostelMode').select().order('date', ascending: false).limit(50);
@@ -1500,15 +1516,18 @@ class SyncService {
       Map<String, dynamic> updates = {};
       for (int i = 0; i < globalRegisteredStudents.length; i++) {
         var s = globalRegisteredStudents[i];
-        updates['$i/name'] = s.name;
-        updates['$i/roomNo'] = s.roomNo;
-        updates['$i/pin'] = s.pin;
-        updates['$i/photoUrl'] = s.photoUrl ?? "";
-        updates['$i/email'] = s.email;
+        Map<String, dynamic> stMap = {
+          'name': s.name,
+          'roomNo': s.roomNo,
+          'pin': s.pin,
+          'photoUrl': s.photoUrl ?? "",
+          'email': s.email,
+        };
         // CRITICAL: Preserve FCM token so notifications keep working
         if (s.fcmToken != null && s.fcmToken!.isNotEmpty) {
-          updates['$i/fcmToken'] = s.fcmToken;
+          stMap['fcmToken'] = s.fcmToken;
         }
+        updates['$i'] = stMap;
       }
       
       final snap = await _dbRef.child('students').get();
@@ -2381,7 +2400,26 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    globalSyncTrigger.addListener(_onSync);
     _loadSavedCredentials();
+  }
+
+  @override
+  void dispose() {
+    globalSyncTrigger.removeListener(_onSync);
+    super.dispose();
+  }
+
+  void _onSync() {
+    if (!mounted) return;
+    if (hasSavedStudent && globalRegisteredStudents.isNotEmpty) {
+      bool exists = globalRegisteredStudents.any(
+        (s) => s.name == savedStudentName && s.roomNo == savedStudentRoom,
+      );
+      if (!exists) {
+        _clearSavedStudent();
+      }
+    }
   }
 
   Future<void> _loadSavedCredentials() async {
@@ -2399,10 +2437,21 @@ class _LoginScreenState extends State<LoginScreen> {
       savedAdminPhoto = prefs.getString('last_admin_photo');
       hasSavedAdmin = savedAdminPhone != null && savedAdminPhone!.isNotEmpty;
       if (hasSavedStudent) {
-        selectedRoom = savedStudentRoom;
-        selectedStudentName = savedStudentName;
-        studentPhotoUrl = savedStudentPhoto;
-        isStudent = true;
+        if (globalRegisteredStudents.isNotEmpty) {
+          bool exists = globalRegisteredStudents.any(
+            (s) => s.name == savedStudentName && s.roomNo == savedStudentRoom,
+          );
+          if (!exists) {
+            hasSavedStudent = false;
+            _clearSavedStudent();
+          }
+        }
+        if (hasSavedStudent) {
+          selectedRoom = savedStudentRoom;
+          selectedStudentName = savedStudentName;
+          studentPhotoUrl = savedStudentPhoto;
+          isStudent = true;
+        }
       }
       if (hasSavedAdmin) {
         _adminMobileController.text = savedAdminPhone!;
@@ -3726,7 +3775,60 @@ class _LoginScreenState extends State<LoginScreen> {
           } catch (e) {}
         }
       }
-      if (target != null && (target.pin == typedPin || target.pin == hashed)) {
+      // Check if student still exists (was deleted by Admin)
+      if (target == null) {
+        _clearSavedStudent();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account is not registered. Please contact Admin.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Live verification against Firebase to prevent logging in with stale local cache
+      final RegisteredStudent validatedTarget = target;
+      try {
+        final snap = await FirebaseDatabase.instance
+            .ref('hostelData_$globalHostelMode/students')
+            .get();
+        if (snap.exists && snap.value != null) {
+          bool foundInCloud = false;
+          var studentsData = snap.value;
+          var studentsList = studentsData is List
+              ? studentsData
+              : (studentsData is Map ? studentsData.values : []);
+          for (var s in studentsList) {
+            if (s != null) {
+              var st = RegisteredStudent.fromJson(
+                Map<String, dynamic>.from(s),
+              );
+              if (st.name == validatedTarget.name && st.roomNo == validatedTarget.roomNo) {
+                target = st;
+                foundInCloud = true;
+                break;
+              }
+            }
+          }
+          if (!foundInCloud) {
+            target = null;
+          }
+        }
+      } catch (e) {}
+
+      if (target == null) {
+        _clearSavedStudent();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Your account is not registered. Please contact Admin.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (target.pin == typedPin || target.pin == hashed) {
         if (target.pin == typedPin) {
           target.pin = hashed;
           int idx = globalRegisteredStudents.indexWhere(
@@ -4971,12 +5073,15 @@ class StudentDashboardScreen extends StatefulWidget {
 
 class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   bool _isFetchingData = false;
+  bool _isEvicting = false;
+
   @override
   void initState() {
     super.initState();
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
+      _verifyStudentStillExists();
       if (mounted)
         setState(() {
           _isFetchingData = true;
@@ -5001,7 +5106,68 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 
   void _onSync() {
+    _verifyStudentStillExists();
     if (mounted) setState(() {});
+  }
+
+  void _verifyStudentStillExists() async {
+    if (_isEvicting || !mounted) return;
+    if (!SyncService._hasDownloadedOnce) return;
+
+    bool stillExists = globalRegisteredStudents.any(
+      (s) => s.name == widget.name && s.roomNo == widget.roomNo,
+    );
+
+    if (!stillExists) {
+      _isEvicting = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('userType');
+      await prefs.remove('identifier');
+      await prefs.remove('extraInfo');
+      await prefs.remove('photoPath');
+      await prefs.remove('last_student_name');
+      await prefs.remove('last_student_room');
+      await prefs.remove('last_student_photo');
+
+      if (!mounted) return;
+
+      final navContext = globalNavigatorKey.currentContext ?? context;
+      await showDialog(
+        context: navContext,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+              SizedBox(width: 8),
+              Text('Access Revoked', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            'Your account has been removed by the Admin.\nPlease contact the Admin to register again.',
+            style: TextStyle(fontSize: 15),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brandGreen,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+
+      SyncService.cancelAllStreams();
+      globalNavigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
   }
 
   int _selectedIndex = 0;
@@ -6295,12 +6461,15 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isFetchingData = false;
+  bool _isEvicting = false;
+
   @override
   void initState() {
     super.initState();
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
+      _verifyAdminStillExists();
       if (mounted)
         setState(() {
           _isFetchingData = true;
@@ -6323,7 +6492,67 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _onSync() {
+    _verifyAdminStillExists();
     if (mounted) setState(() {});
+  }
+
+  void _verifyAdminStillExists() async {
+    if (_isEvicting || !mounted) return;
+    if (!SyncService._hasDownloadedOnce) return;
+    if (widget.phone == '9427329977' || widget.phone == '9313279977') return;
+
+    bool stillExists = globalAdmins.any((a) => a.phone == widget.phone);
+
+    if (!stillExists) {
+      _isEvicting = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('userType');
+      await prefs.remove('identifier');
+      await prefs.remove('extraInfo');
+      await prefs.remove('photoPath');
+      await prefs.remove('last_admin_phone');
+      await prefs.remove('last_admin_name');
+      await prefs.remove('last_admin_photo');
+
+      if (!mounted) return;
+
+      final navContext = globalNavigatorKey.currentContext ?? context;
+      await showDialog(
+        context: navContext,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+              SizedBox(width: 8),
+              Text('Access Revoked', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: const Text(
+            'Your Admin account has been removed.\nPlease contact Super Admin.',
+            style: TextStyle(fontSize: 15),
+          ),
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brandGreen,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+
+      SyncService.cancelAllStreams();
+      globalNavigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    }
   }
 
   List<Map<String, dynamic>> _getPendingDues() {
@@ -11124,8 +11353,9 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                                               ? () async {
                                                   globalRegisteredStudents
                                                       .remove(s);
+                                                   await saveRegisteredStudents();
                                                   await SyncService.pushStudents();
-                                                  Navigator.pop(dCtx);
+                                                   if (dCtx.mounted) Navigator.pop(dCtx);
                                                 }
                                               : null,
                                           child: Text(
