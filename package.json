@@ -1,0 +1,11 @@
+{
+  "name": "gecpatanmess",
+  "version": "1.0.105",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Static build complete'"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
+}
