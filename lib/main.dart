@@ -27,14 +27,14 @@ const String RENDER_API_URL = "https://hostel-backend-pdph.onrender.com";
 Map<String, DailyRecord> globalApiAttendanceMap = {};
 Set<String> _fetchedApiMonths = {};
 Future<void> fetchAttendanceMonth(int year, int month) async {
-  String monthKey = "$year-$month";
+  String monthKey = "${globalHostelMode}_$year-$month";
   if (_fetchedApiMonths.contains(monthKey)) return;
   try {
     final dio = Dio();
     dio.options.receiveTimeout = const Duration(seconds: 45);
     dio.options.sendTimeout = const Duration(seconds: 45);
     final response = await dio.get(
-      '$RENDER_API_URL/attendance-history?year=$year&month=$month',
+      '$RENDER_API_URL/attendance-history?year=$year&month=$month&mode=$globalHostelMode',
     );
     if (response.data != null && response.data['success'] == true) {
       List data = response.data['data'];
@@ -78,8 +78,10 @@ void forEachMergedAttendance(
     }
   });
   globalApiAttendanceMap.forEach((key, rec) {
-    action(key, rec);
-    processed.add(key);
+    if (!processed.contains(key)) {
+      action(key, rec);
+      processed.add(key);
+    }
   });
   globalAttendanceMap.forEach((key, rec) {
     if (!processed.contains(key)) {
