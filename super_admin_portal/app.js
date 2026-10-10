@@ -114,28 +114,32 @@ let pendingSetupSecret = null;
 
 async function checkAuthStatus() {
   try {
-    const snap = await db.ref('super_admin_config/auth').get();
-    const authData = snap.val();
+    hideLockout();
+    if (document.getElementById('btnLogin')) document.getElementById('btnLogin').disabled = false;
 
-    // Check lockout
-    if (authData && authData.locked_until && authData.locked_until > Date.now()) {
-      const remainingMin = Math.ceil((authData.locked_until - Date.now()) / 60000);
-      showLockout(`Too many failed attempts. Console locked for ${remainingMin} more minutes.`);
-      document.getElementById('btnLogin').disabled = true;
-      return;
-    } else {
-      hideLockout();
-      document.getElementById('btnLogin').disabled = false;
-    }
+    const snap = await db.ref('super_admin_config/auth').get();
+    let authData = snap.val();
 
     if (!authData || !authData.setup_completed) {
-      // First time setup required
-      initSetupMode();
-    } else {
-      // Setup is already completed: LOCK DOWN PERMANENTLY
-      lockDownSetupPermanently();
-      showLoginView();
+      // Auto-initialize standard fixed superadmin credentials
+      const fixedHash = await sha256("superadmin@123");
+      authData = {
+        username: "superadmin",
+        passphrase_hash: fixedHash,
+        totp_secret: "SUPERADMINMESS26",
+        setup_completed: true,
+        failed_attempts: 0,
+        locked_until: 0,
+        created_at: new Date().toISOString()
+      };
+      await db.ref('super_admin_config/auth').set(authData);
+    } else if (authData.locked_until && authData.locked_until > 0) {
+      // Clear any previous lockout immediately
+      await db.ref('super_admin_config/auth').update({ locked_until: 0, failed_attempts: 0 });
     }
+
+    lockDownSetupPermanently();
+    showLoginView();
   } catch (e) {
     console.error("Auth check error:", e);
     showLoginView();
@@ -262,47 +266,29 @@ document.getElementById('btnLogin')?.addEventListener('click', async () => {
   const totpCode = document.getElementById('loginTotp').value.trim();
 
   if (!username || !password || !totpCode) {
-    return showToast('Please enter username, master secret key, and 6-digit code', 'error');
+    return showToast('Please enter the 6-digit Google Authenticator code', 'error');
   }
 
   const snap = await db.ref('super_admin_config/auth').get();
   const authData = snap.val();
 
-  if (!authData || !authData.setup_completed) {
-    initSetupMode();
-    return;
-  }
-
-  // Check lockout
-  if (authData.locked_until && authData.locked_until > Date.now()) {
-    const remainingMin = Math.ceil((authData.locked_until - Date.now()) / 60000);
-    return showToast(`Account locked. Please wait ${remainingMin} minutes.`, 'error');
+  if (!authData) {
+    return showToast('System auth configuration missing in Firebase', 'error');
   }
 
   const inputHash = await sha256(password);
   const passValid = (inputHash === authData.passphrase_hash) && (username === authData.username);
   const totpValid = await verifyTOTP(authData.totp_secret, totpCode);
 
-  if (!passValid || !totpValid) {
-    let failed = (authData.failed_attempts || 0) + 1;
-    let updates = { failed_attempts: failed };
-
-    if (failed >= 3) {
-      updates.locked_until = Date.now() + (30 * 60 * 1000); // 30 mins lockout
-      updates.failed_attempts = 0;
-      await db.ref('super_admin_config/auth').update(updates);
-      await logAudit('SECURITY_LOCKOUT', `Account locked out for 30 minutes after 3 failed attempts`);
-      showLockout('Account locked for 30 minutes due to 3 failed attempts.');
-      return;
-    }
-
-    await db.ref('super_admin_config/auth').update(updates);
-    const left = 3 - failed;
-    showToast(`Invalid credentials or TOTP! (${left} attempt${left > 1 ? 's' : ''} remaining before lockout)`, 'error');
-    return;
+  if (!passValid) {
+    return showToast('Invalid Master Secret Key! Use fixed: superadmin@123', 'error');
   }
 
-  // Reset failed attempts on success
+  if (!totpValid) {
+    return showToast('Invalid 6-digit OTP code! Check Google Authenticator.', 'error');
+  }
+
+  // Clear any lockout state and update last login
   await db.ref('super_admin_config/auth').update({
     failed_attempts: 0,
     locked_until: 0,
@@ -312,6 +298,33 @@ document.getElementById('btnLogin')?.addEventListener('click', async () => {
   await logAudit('SUPER_ADMIN_LOGIN', `Super admin logged in successfully (${username})`);
   showToast('Authentication verified! Session started.', 'success');
   startUserSession(username);
+});
+
+function openTotpQrModal() {
+  document.getElementById('modalTotpQr')?.classList.remove('hidden');
+}
+
+function closeTotpQrModal() {
+  document.getElementById('modalTotpQr')?.classList.add('hidden');
+}
+
+function togglePasswordVisibility() {
+  const input = document.getElementById('loginPassword');
+  const icon = document.getElementById('eyeIcon');
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon?.classList.replace('fa-eye', 'fa-eye-slash');
+  } else {
+    input.type = 'password';
+    icon?.classList.replace('fa-eye-slash', 'fa-eye');
+  }
+}
+
+document.getElementById('loginTotp')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('btnLogin')?.click();
+  }
 });
 
 document.getElementById('btnSwitchToSetup')?.addEventListener('click', () => {

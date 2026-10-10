@@ -102,24 +102,40 @@
         <div>
           <label class="block text-xs font-bold uppercase tracking-wider text-[#64748B] mb-1.5">Master Username</label>
           <div class="relative">
-            <i class="fa-solid fa-user absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
-            <input type="text" id="loginUsername" placeholder="superadmin" class="w-full pl-10 pr-4 py-2.5 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none text-sm text-[#0F172A] font-medium transition">
+            <i class="fa-solid fa-user absolute left-3.5 top-3.5 text-[#135B26] text-sm"></i>
+            <input type="text" id="loginUsername" value="superadmin" readonly class="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none text-sm text-[#0F172A] font-bold cursor-not-allowed select-none transition">
           </div>
         </div>
 
         <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-[#64748B] mb-1.5">Master Secret Key</label>
+          <div class="flex items-center justify-between mb-1.5">
+            <label class="block text-xs font-bold uppercase tracking-wider text-[#64748B]">Master Secret Key</label>
+            <span class="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Fixed: superadmin@123</span>
+          </div>
           <div class="relative">
             <i class="fa-solid fa-lock absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
-            <input type="password" id="loginPassword" placeholder="••••••••••••" class="w-full pl-10 pr-4 py-2.5 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none text-sm text-[#0F172A] transition">
+            <input type="password" id="loginPassword" value="superadmin@123" placeholder="superadmin@123" class="w-full pl-10 pr-10 py-2.5 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none text-sm text-[#0F172A] font-mono transition">
+            <button type="button" onclick="togglePasswordVisibility()" class="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600">
+              <i class="fa-regular fa-eye text-xs" id="eyeIcon"></i>
+            </button>
           </div>
         </div>
 
         <div>
           <label class="block text-xs font-bold uppercase tracking-wider text-[#64748B] mb-1.5">Google Authenticator TOTP (6 Digits)</label>
           <div class="relative">
-            <i class="fa-solid fa-mobile-screen-button absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
-            <input type="text" id="loginTotp" maxlength="6" placeholder="000 000" class="w-full pl-10 pr-4 py-2.5 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none text-center font-mono text-xl tracking-widest text-[#135B26] font-bold transition">
+            <i class="fa-solid fa-mobile-screen-button absolute left-3.5 top-3.5 text-[#135B26] text-sm"></i>
+            <input type="text" id="loginTotp" maxlength="6" autofocus placeholder="000 000" class="w-full pl-10 pr-4 py-2.5 bg-emerald-50/40 border-2 border-emerald-500/50 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none text-center font-mono text-2xl tracking-widest text-[#135B26] font-extrabold transition">
+          </div>
+          <div class="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[11px] text-[#135B26]">
+            <div class="truncate">
+              <span>Google 2FA Key: </span>
+              <strong class="font-mono select-all bg-white px-1.5 py-0.5 rounded border border-emerald-300">SUPERADMINMESS26</strong>
+            </div>
+            <button type="button" onclick="openTotpQrModal()" class="shrink-0 ml-2 text-xs font-bold text-[#135B26] hover:text-[#0E441C] underline flex items-center gap-1">
+              <i class="fa-solid fa-qrcode text-xs"></i>
+              <span>QR Code</span>
+            </button>
           </div>
         </div>
 
@@ -127,13 +143,6 @@
           <i class="fa-solid fa-arrow-right-to-bracket"></i>
           <span>Secure Sign In</span>
         </button>
-
-        <!-- Dynamic Setup Switch (Will be PERMANENTLY REMOVED from DOM once setup is completed) -->
-        <div id="setupSwitchContainer" class="text-center pt-2">
-          <button id="btnSwitchToSetup" class="text-xs font-semibold text-[#135B26] hover:underline transition">
-            First time? Click to initialize Google 2FA setup
-          </button>
-        </div>
       </div>
     </div>
   </div>
@@ -371,7 +380,7 @@
                 </div>
                 <div class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl">
                   <span class="text-[#64748B]">Brute-Force Lockout:</span>
-                  <span class="font-bold text-[#0F172A]">3 Attempts &rarr; 30 Mins Lock</span>
+                  <span class="font-bold text-amber-700">Temporarily Disabled</span>
                 </div>
               </div>
             </div>
@@ -852,6 +861,34 @@
         <button onclick="closeDeleteModal()" class="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition">Cancel</button>
         <button id="btnConfirmDeleteExec" class="px-5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition shadow-sm">Yes, Revoke Access</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: GOOGLE AUTHENTICATOR QR CODE ==================== -->
+  <div id="modalTotpQr" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-sm bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl p-6 text-center space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+        <h3 class="font-bold text-sm text-[#0F172A] flex items-center gap-2">
+          <i class="fa-solid fa-mobile-screen-button text-[#135B26]"></i>
+          <span>Google Authenticator Setup</span>
+        </h3>
+        <button onclick="closeTotpQrModal()" class="text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="p-3 bg-[#EFF3FC] rounded-2xl inline-block shadow-inner border border-slate-200">
+        <img id="loginQrImage" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=otpauth%3A%2F%2Ftotp%2FHostelMess%3Asuperadmin%3Fsecret%3DSUPERADMINMESS26%26issuer%3DHostelMessSystem" alt="Google Authenticator QR" class="w-44 h-44 object-contain mx-auto rounded-lg">
+      </div>
+      <div class="text-xs text-[#64748B] space-y-1.5">
+        <p>Scan QR code with <strong>Google Authenticator</strong> or enter key manually:</p>
+        <div class="p-2 bg-emerald-50 rounded-xl border border-emerald-200 font-mono text-[#135B26] font-bold text-sm select-all">
+          SUPERADMINMESS26
+        </div>
+        <p class="text-[11px] text-slate-500">Account Name: <strong>superadmin</strong> | Type: <strong>Time-based</strong></p>
+      </div>
+      <button onclick="closeTotpQrModal()" class="w-full py-2 bg-[#135B26] hover:bg-[#0E441C] text-white text-xs font-bold rounded-xl transition shadow-xs">
+        Done
+      </button>
     </div>
   </div>
 
