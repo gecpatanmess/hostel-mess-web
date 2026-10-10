@@ -824,33 +824,243 @@ Future<void> saveRegisteredStudents() async {
   await prefs.setStringList('globalRegisteredStudents', strs);
 }
 
+class RoleDefinition {
+  final String id;
+  final String name;
+  final Map<String, bool> permissions;
+
+  RoleDefinition({
+    required this.id,
+    required this.name,
+    required this.permissions,
+  });
+
+  factory RoleDefinition.fromJson(String id, Map<String, dynamic> json) {
+    Map<String, bool> perms = {};
+    if (json['permissions'] != null && json['permissions'] is Map) {
+      (json['permissions'] as Map).forEach((k, v) {
+        perms[k.toString()] = v == true;
+      });
+    }
+    return RoleDefinition(
+      id: id,
+      name: (json['name'] ?? id).toString(),
+      permissions: perms,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'permissions': permissions,
+  };
+}
+
+Map<String, RoleDefinition> globalRoles = {
+  'super_admin': RoleDefinition(
+    id: 'super_admin',
+    name: 'Super Admin',
+    permissions: {
+      'can_manage_polls': true,
+      'can_manage_meals': true,
+      'can_attendance': true,
+      'can_attendance_edit': true,
+      'can_students_manage': true,
+      'can_complaints': true,
+      'can_notices': true,
+      'can_manage_admins': true,
+    },
+  ),
+  'admin': RoleDefinition(
+    id: 'admin',
+    name: 'Admin',
+    permissions: {
+      'can_manage_polls': true,
+      'can_manage_meals': true,
+      'can_attendance': true,
+      'can_attendance_edit': true,
+      'can_students_manage': true,
+      'can_complaints': true,
+      'can_notices': true,
+      'can_manage_admins': true,
+    },
+  ),
+  'mess_committee': RoleDefinition(
+    id: 'mess_committee',
+    name: 'Mess Committee',
+    permissions: {
+      'can_manage_polls': true,
+      'can_manage_meals': false,
+      'can_attendance': false,
+      'can_attendance_edit': false,
+      'can_students_manage': false,
+      'can_complaints': true,
+      'can_notices': true,
+      'can_manage_admins': false,
+    },
+  ),
+  'professor': RoleDefinition(
+    id: 'professor',
+    name: 'Professor / Warden',
+    permissions: {
+      'can_manage_polls': false,
+      'can_manage_meals': false,
+      'can_attendance': true,
+      'can_attendance_edit': false,
+      'can_students_manage': false,
+      'can_complaints': true,
+      'can_notices': true,
+      'can_manage_admins': false,
+    },
+  ),
+};
+
 class AdminUser {
   String phone;
   String pin;
   String email;
   String name;
   String? photoUrl;
+  String role;
+  String hostelScope; // 'both', 'boys', or 'girls'
+  Map<String, bool>? customPermissions;
+
   AdminUser(
     this.phone,
     this.pin, {
     this.email = '',
     this.name = 'Admin',
     this.photoUrl,
+    this.role = 'admin',
+    this.hostelScope = 'both',
+    this.customPermissions,
   });
+
   Map<String, dynamic> toJson() => {
     'phone': phone,
     'pin': pin,
     'email': email,
     'name': name,
     'photoUrl': photoUrl,
+    'role': role,
+    'hostelScope': hostelScope,
+    if (customPermissions != null) 'customPermissions': customPermissions,
   };
-  factory AdminUser.fromJson(Map<String, dynamic> json) => AdminUser(
-    json['phone'],
-    json['pin'],
-    email: json['email'] ?? '',
-    name: json['name'] ?? 'Admin',
-    photoUrl: json['photoUrl'],
-  );
+
+  factory AdminUser.fromJson(Map<String, dynamic> json) {
+    Map<String, bool>? perms;
+    if (json['customPermissions'] != null && json['customPermissions'] is Map) {
+      perms = {};
+      (json['customPermissions'] as Map).forEach((k, v) {
+        perms![k.toString()] = v == true;
+      });
+    }
+    return AdminUser(
+      (json['phone'] ?? '').toString(),
+      (json['pin'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      name: (json['name'] ?? 'Admin').toString(),
+      photoUrl: json['photoUrl']?.toString(),
+      role: (json['role'] ?? 'admin').toString(),
+      hostelScope: (json['hostelScope'] ?? 'both').toString(),
+      customPermissions: perms,
+    );
+  }
+}
+
+bool checkAdminPermission(String phone, String permKey) {
+  final cleanPhone = phone.trim();
+  AdminUser? admin;
+  try {
+    admin = globalAdmins.firstWhere((a) => a.phone.trim() == cleanPhone);
+  } catch (e) {
+    admin = null;
+  }
+  if (admin == null) return false;
+  if (admin.customPermissions != null && admin.customPermissions!.containsKey(permKey)) {
+    return admin.customPermissions![permKey] == true;
+  }
+  final roleDef = globalRoles[admin.role];
+  if (roleDef != null && roleDef.permissions.containsKey(permKey)) {
+    return roleDef.permissions[permKey] == true;
+  }
+  if (admin.role == 'super_admin' || admin.role == 'admin') return true;
+  return false;
+}
+
+String? cachedAdminScope;
+
+String getAdminHostelScope(String phone) {
+  final cleanPhone = phone.trim();
+  AdminUser? admin;
+  try {
+    admin = globalAdmins.firstWhere((a) => a.phone.trim() == cleanPhone);
+  } catch (e) {
+    admin = null;
+  }
+  if (admin != null) {
+    final s = admin.hostelScope.trim().toLowerCase();
+    cachedAdminScope = s;
+    if (s == 'boys' || s == 'girls') return s;
+    return 'both';
+  }
+  if (cachedAdminScope != null && cachedAdminScope!.trim().isNotEmpty) {
+    final s = cachedAdminScope!.trim().toLowerCase();
+    if (s == 'boys' || s == 'girls') return s;
+  }
+  return 'both';
+}
+
+Future<AdminUser?> findAdminAcrossHostels(String phone) async {
+  final clean = phone.trim();
+  try {
+    return globalAdmins.firstWhere((a) => a.phone.trim() == clean);
+  } catch (_) {}
+  for (String h in ['boys', 'girls']) {
+    try {
+      final snap = await FirebaseDatabase.instance.ref('hostelData_$h/admins').get();
+      if (snap.exists && snap.value != null) {
+        var raw = snap.value;
+        var list = raw is List ? raw : (raw is Map ? raw.values : []);
+        for (var a in list) {
+          if (a != null && a is Map) {
+            var au = AdminUser.fromJson(Map<String, dynamic>.from(a));
+            if (au.phone.trim() == clean) {
+              if (!globalAdmins.any((x) => x.phone.trim() == clean)) {
+                globalAdmins.add(au);
+              }
+              return au;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+String getAdminRoleDisplayName(String phone) {
+  final cleanPhone = phone.trim();
+  AdminUser? admin;
+  try {
+    admin = globalAdmins.firstWhere((a) => a.phone.trim() == cleanPhone);
+  } catch (e) {
+    admin = null;
+  }
+  if (admin != null) {
+    if (globalRoles.containsKey(admin.role) && globalRoles[admin.role]!.name.isNotEmpty) {
+      return globalRoles[admin.role]!.name;
+    }
+    if (admin.role == 'super_admin') return 'Super Admin';
+    if (admin.role == 'mess_committee') return 'Mess Committee';
+    if (admin.role == 'professor') return 'Professor / Warden';
+    if (admin.role == 'admin') return 'Admin';
+    return admin.role
+        .replaceAll('_', ' ')
+        .split(' ')
+        .map((w) => w.isNotEmpty ? '${w[0].toUpperCase()}${w.substring(1)}' : '')
+        .join(' ');
+  }
+  return 'Admin';
 }
 
 List<AdminUser> globalAdmins = [
@@ -1051,12 +1261,21 @@ Future<void> _loadDataFromPrefs() async {
   }
   String? userType = prefs.getString('userType');
   String? savedHostelMode = prefs.getString('hostelMode');
+  String? savedAdminScope = prefs.getString('last_admin_scope');
+  if (savedAdminScope != null && savedAdminScope.isNotEmpty) {
+    cachedAdminScope = savedAdminScope.trim().toLowerCase();
+  }
   if (savedHostelMode != null) globalHostelMode = savedHostelMode;
   if (userType == 'admin') {
     String? phone = prefs.getString('identifier');
     String? photoUrl = prefs.getString('photoPath');
     String? name = prefs.getString('extraInfo');
     if (phone != null) {
+      if (savedAdminScope == 'boys') {
+        globalHostelMode = 'boys';
+      } else if (savedAdminScope == 'girls') {
+        globalHostelMode = 'girls';
+      }
       initialScreen = AdminDashboardScreen(
         photoUrl: photoUrl,
         name: name ?? "Admin",
@@ -1548,6 +1767,11 @@ class SyncService {
         updates['$i/name'] = a.name;
         updates['$i/email'] = a.email;
         updates['$i/photoUrl'] = a.photoUrl ?? "";
+        updates['$i/role'] = a.role;
+        updates['$i/hostelScope'] = a.hostelScope;
+        if (a.customPermissions != null) {
+          updates['$i/customPermissions'] = a.customPermissions;
+        }
       }
       
       final snap = await _dbRef.child('admins').get();
@@ -2467,6 +2691,8 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.remove('last_admin_phone');
     await prefs.remove('last_admin_name');
     await prefs.remove('last_admin_photo');
+    await prefs.remove('last_admin_scope');
+    cachedAdminScope = null;
     setState(() {
       hasSavedAdmin = false;
       _adminMobileController.clear();
@@ -2700,6 +2926,9 @@ class _LoginScreenState extends State<LoginScreen> {
         admin = null;
       }
       if (admin == null) {
+        admin = await findAdminAcrossHostels(phone);
+      }
+      if (admin == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -2710,6 +2939,11 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         return;
       } else {
+        if (admin.hostelScope.trim().toLowerCase() == 'boys') {
+          globalHostelMode = 'boys';
+        } else if (admin.hostelScope.trim().toLowerCase() == 'girls') {
+          globalHostelMode = 'girls';
+        }
         if (admin.pin != hashPassword(pin) && admin.pin != pin) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -3291,6 +3525,9 @@ class _LoginScreenState extends State<LoginScreen> {
       } catch (e) {
         admin = null;
       }
+      if (admin == null) {
+        admin = await findAdminAcrossHostels(phone);
+      }
       if (admin != null) {
         if (admin.pin == hashPassword(pin) || admin.pin == pin) {
           if (admin.pin == pin) {
@@ -3307,18 +3544,47 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString('last_admin_phone', admin.phone);
           await prefs.setString('last_admin_name', _adminNameController.text);
           await prefs.setString('last_admin_photo', adminPhotoUrl ?? '');
+          await prefs.setString('last_admin_scope', admin.hostelScope);
+          cachedAdminScope = admin.hostelScope;
           await prefs.setString('userType', 'admin');
-          await prefs.setString('hostelMode', globalHostelMode);
+          String targetMode = admin.hostelScope.trim().toLowerCase() == 'girls'
+              ? 'girls'
+              : (admin.hostelScope.trim().toLowerCase() == 'boys' ? 'boys' : globalHostelMode);
+          await prefs.setString('hostelMode', targetMode);
           await prefs.setString('identifier', admin.phone);
           await prefs.setString('photoPath', adminPhotoUrl ?? '');
           await prefs.setString('extraInfo', _adminNameController.text);
+          await SyncService.switchMode(targetMode);
           await NotificationService.saveToken();
+          final roleDisplayName = getAdminRoleDisplayName(admin.phone);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.verified_user, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      "Welcome! Logged in as $roleDisplayName",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: brandGreen,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              duration: const Duration(seconds: 3),
+            ),
+          );
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
               builder: (context) => AdminDashboardScreen(
                 photoUrl: adminPhotoUrl,
-                name: _adminNameController.text,
+                name: _adminNameController.text.isNotEmpty ? _adminNameController.text : admin!.name,
                 phone: admin!.phone,
               ),
             ),
@@ -3864,16 +4130,44 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('last_admin_phone', admin.phone);
     await prefs.setString('last_admin_name', admin.name);
     await prefs.setString('last_admin_photo', admin.photoUrl ?? '');
+    await prefs.setString('last_admin_scope', admin.hostelScope);
+    cachedAdminScope = admin.hostelScope;
     await prefs.setString('userType', 'admin');
-    await prefs.setString('hostelMode', globalHostelMode);
+    String targetMode = admin.hostelScope.trim().toLowerCase() == 'girls'
+        ? 'girls'
+        : (admin.hostelScope.trim().toLowerCase() == 'boys' ? 'boys' : globalHostelMode);
+    await prefs.setString('hostelMode', targetMode);
     await prefs.setString('identifier', admin.phone);
     await prefs.setString('photoPath', admin.photoUrl ?? '');
     await prefs.setString(
       'extraInfo',
       admin.name,
     ); // CRITICAL FIX: Restart streams for the correct hostel mode before navigating
-    await SyncService.switchMode(globalHostelMode);
+    await SyncService.switchMode(targetMode);
     await NotificationService.saveToken();
+    final roleDisplayName = getAdminRoleDisplayName(admin.phone);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.verified_user, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Welcome! Logged in as $roleDisplayName",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: brandGreen,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
@@ -4600,6 +4894,25 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: const TextStyle(fontSize: 14, color: brandGray),
                 ),
               ),
+              const SizedBox(height: 6),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: brandGreen.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: brandGreen.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    "Role: ${getAdminRoleDisplayName(savedAdminPhone ?? '')}",
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: brandGreen,
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(height: 20),
             ],
             if (!hasSavedAdmin) ...[
@@ -4766,19 +5079,29 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   elevation: 0,
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Admin Login",
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(width: 8),
-                    Icon(Icons.login, size: 20),
-                  ],
+                child: Builder(
+                  builder: (context) {
+                    String targetPhone = (hasSavedAdmin && savedAdminPhone != null && savedAdminPhone!.isNotEmpty)
+                        ? savedAdminPhone!
+                        : _adminMobileController.text.trim();
+                    String roleTitle = targetPhone.isNotEmpty
+                        ? getAdminRoleDisplayName(targetPhone)
+                        : "Staff";
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          "Login as $roleTitle",
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.login, size: 20),
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -6533,6 +6856,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   bool _isFetchingData = false;
   bool _isEvicting = false;
   StreamSubscription? _adminsStreamSub;
+  StreamSubscription? _rolesStreamSub;
   Timer? _adminEvictionPollTimer;
 
   @override
@@ -6540,7 +6864,15 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     super.initState();
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
     _initDirectAdminListener();
+    _initRolesListener();
     _startAdminEvictionHeartbeat();
+
+    final initialScope = getAdminHostelScope(widget.phone);
+    if (initialScope == 'boys' && globalHostelMode != 'boys') {
+      SyncService.switchMode('boys');
+    } else if (initialScope == 'girls' && globalHostelMode != 'girls') {
+      SyncService.switchMode('girls');
+    }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
@@ -6557,6 +6889,28 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         setState(() {
           _isFetchingData = false;
         });
+    });
+  }
+
+  void _initRolesListener() {
+    _rolesStreamSub?.cancel();
+    _rolesStreamSub = FirebaseDatabase.instance.ref('roles').onValue.listen((event) {
+      if (event.snapshot.exists && event.snapshot.value != null) {
+        var raw = event.snapshot.value;
+        if (raw is Map) {
+          raw.forEach((k, v) {
+            if (v is Map) {
+              globalRoles[k.toString()] = RoleDefinition.fromJson(
+                k.toString(),
+                Map<String, dynamic>.from(v),
+              );
+            }
+          });
+          if (mounted) setState(() {});
+        }
+      }
+    }, onError: (e) {
+      print("Roles stream error: $e");
     });
   }
 
@@ -6591,7 +6945,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _checkAdminSnapshotForEviction(DataSnapshot snap) {
     if (_isEvicting || !mounted) return;
-    if (widget.phone == '9427329977' || widget.phone == '9313279977') return;
     bool foundCurrentAdmin = false;
 
     if (snap.value != null) {
@@ -6602,6 +6955,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           String aPhone = (a['phone'] ?? '').toString().trim();
           if (aPhone == widget.phone.trim()) {
             foundCurrentAdmin = true;
+            String updatedScope = (a['hostelScope'] ?? 'both').toString().trim().toLowerCase();
+            String updatedRole = (a['role'] ?? 'admin').toString().trim();
+            cachedAdminScope = updatedScope;
+            int idx = globalAdmins.indexWhere((x) => x.phone.trim() == widget.phone.trim());
+            if (idx != -1) {
+              globalAdmins[idx].hostelScope = updatedScope;
+              globalAdmins[idx].role = updatedRole;
+            }
+            if (updatedScope == 'boys' && globalHostelMode != 'boys') {
+              SyncService.switchMode('boys');
+            } else if (updatedScope == 'girls' && globalHostelMode != 'girls') {
+              SyncService.switchMode('girls');
+            }
+            if (mounted) setState(() {});
             break;
           }
         }
@@ -6616,6 +6983,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void dispose() {
     _adminsStreamSub?.cancel();
+    _rolesStreamSub?.cancel();
     _adminEvictionPollTimer?.cancel();
     globalSyncTrigger.removeListener(_onSync);
     super.dispose();
@@ -6623,13 +6991,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _onSync() {
     _verifyAdminStillExists();
+    final scope = getAdminHostelScope(widget.phone);
+    if (scope == 'boys' && globalHostelMode != 'boys') {
+      SyncService.switchMode('boys');
+    } else if (scope == 'girls' && globalHostelMode != 'girls') {
+      SyncService.switchMode('girls');
+    }
     if (mounted) setState(() {});
   }
 
   void _verifyAdminStillExists() async {
     if (_isEvicting || !mounted) return;
     if (!SyncService._hasDownloadedOnce) return;
-    if (widget.phone == '9427329977' || widget.phone == '9313279977') return;
 
     bool stillExists = globalAdmins.any(
       (a) => a.phone.trim() == widget.phone.trim(),
@@ -6656,6 +7029,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await prefs.remove('last_admin_phone');
     await prefs.remove('last_admin_name');
     await prefs.remove('last_admin_photo');
+    await prefs.remove('last_admin_scope');
+    cachedAdminScope = null;
 
     final nav = globalNavigatorKey.currentState;
     if (nav != null) {
@@ -6788,124 +7163,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   int _selectedIndex = 0;
-  final TextEditingController _newAdminMobileCtrl = TextEditingController();
-  final TextEditingController _newAdminPinCtrl = TextEditingController();
-  final TextEditingController _changeAdminPinCtrl = TextEditingController();
-  final TextEditingController _newAdminEmailCtrl = TextEditingController();
-  Widget _buildAdminsTab() {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Create New Admin",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: brandDark,
-              ),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _newAdminMobileCtrl,
-              decoration: InputDecoration(
-                labelText: "Mobile Number",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              keyboardType: TextInputType.phone,
-              maxLength: 10,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _newAdminEmailCtrl,
-              decoration: InputDecoration(
-                labelText: "Email ID",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              keyboardType: TextInputType.emailAddress,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _newAdminPinCtrl,
-              decoration: InputDecoration(
-                labelText: "8-character Password",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              maxLength: 8,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: brandGreen,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () async {
-                  if (_newAdminMobileCtrl.text.length == 10 &&
-                      _newAdminPinCtrl.text.length == 8 &&
-                      _newAdminEmailCtrl.text.contains('@')) {
-                    setState(() {
-                      globalAdmins.add(
-                        AdminUser(
-                          _newAdminMobileCtrl.text,
-                          hashPassword(_newAdminPinCtrl.text),
-                          email: _newAdminEmailCtrl.text.trim(),
-                        ),
-                      );
-                    });
-                    final prefs = await SharedPreferences.getInstance();
-                    List<String> adminStrings = globalAdmins
-                        .map((a) => jsonEncode(a.toJson()))
-                        .toList();
-                    await prefs.setStringList('globalAdmins', adminStrings);
-                    await SyncService.pushAdmins();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Admin created successfully!"),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                    _newAdminMobileCtrl.clear();
-                    _newAdminPinCtrl.clear();
-                    _newAdminEmailCtrl.clear();
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          "Please enter valid mobile, email and password.",
-                        ),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                },
-                child: const Text(
-                  "Create Admin",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildAdminHomeTab() {
     return ListView(
@@ -6940,7 +7197,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               final String dateStr =
                   "${DateTime.fromMillisecondsSinceEpoch(p.startTime).day}/${DateTime.fromMillisecondsSinceEpoch(p.startTime).month}";
               return InkWell(
-                onLongPress: closed
+                onLongPress: (closed && checkAdminPermission(widget.phone, 'can_manage_polls'))
                     ? () {
                         showDialog(
                           context: context,
@@ -7304,25 +7561,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                       ],
                     ),
-                    trailing: IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.redAccent,
-                      ),
-                      onPressed: () async {
-                        await SyncService.deleteNotice(notice.id);
-                        setState(() {});
-                      },
-                    ),
+                    trailing: checkAdminPermission(widget.phone, 'can_notices')
+                        ? IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () async {
+                              await SyncService.deleteNotice(notice.id);
+                              setState(() {});
+                            },
+                          )
+                        : null,
                   ),
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: brandGreen,
-        onPressed: _showAddNoticeDialog,
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
+      floatingActionButton: checkAdminPermission(widget.phone, 'can_notices')
+          ? FloatingActionButton(
+              backgroundColor: brandGreen,
+              onPressed: _showAddNoticeDialog,
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
     );
   }
 
@@ -7418,6 +7679,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     await prefs.remove('identifier');
     await prefs.remove('photoPath');
     await prefs.remove('extraInfo');
+    await prefs.remove('last_admin_scope');
+    cachedAdminScope = null;
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -7861,99 +8124,176 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final activeScope = getAdminHostelScope(widget.phone);
+    if (activeScope == 'boys' && globalHostelMode != 'boys') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && globalHostelMode != 'boys') {
+          SyncService.switchMode('boys');
+        }
+      });
+    } else if (activeScope == 'girls' && globalHostelMode != 'girls') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && globalHostelMode != 'girls') {
+          SyncService.switchMode('girls');
+        }
+      });
+    }
     return Stack(
       children: [
         Scaffold(
           backgroundColor: brandBg,
           appBar: AppBar(
             backgroundColor: brandGreen,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  "Admin  ",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
+            title: Builder(
+              builder: (context) {
+                final roleName = getAdminRoleDisplayName(widget.phone);
+                final scope = getAdminHostelScope(widget.phone);
+                if (scope == 'boys') {
+                  return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      GestureDetector(
-                        onTap: () async {
-                          if (globalHostelMode != 'boys') {
-                            await SyncService.switchMode(
-                              'boys',
-                            ); // Let the Future complete before updating UI, but UI is responsive
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: globalHostelMode == 'boys'
-                                ? Colors.white
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            "Boys",
-                            style: TextStyle(
-                              color: globalHostelMode == 'boys'
-                                  ? const Color(0xFF2E7D32)
-                                  : Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
+                      Text(
+                        "$roleName  ",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
                         ),
                       ),
-                      GestureDetector(
-                        onTap: () async {
-                          if (globalHostelMode != 'girls') {
-                            await SyncService.switchMode('girls');
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: globalHostelMode == 'girls'
-                                ? Colors.white
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Text(
-                            "Girls",
-                            style: TextStyle(
-                              color: globalHostelMode == 'girls'
-                                  ? const Color(0xFF2E7D32)
-                                  : Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Text(
+                          "Boys",
+                          style: TextStyle(
+                            color: Color(0xFF2E7D32),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
                       ),
                     ],
-                  ),
-                ),
-              ],
+                  );
+                } else if (scope == 'girls') {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "$roleName  ",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Text(
+                          "Girls",
+                          style: TextStyle(
+                            color: Color(0xFF2E7D32),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "$roleName  ",
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () async {
+                              if (globalHostelMode != 'boys') {
+                                await SyncService.switchMode('boys');
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: globalHostelMode == 'boys'
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                "Boys",
+                                style: TextStyle(
+                                  color: globalHostelMode == 'boys'
+                                      ? const Color(0xFF2E7D32)
+                                      : Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () async {
+                              if (globalHostelMode != 'girls') {
+                                await SyncService.switchMode('girls');
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: globalHostelMode == 'girls'
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: Text(
+                                "Girls",
+                                style: TextStyle(
+                                  color: globalHostelMode == 'girls'
+                                      ? const Color(0xFF2E7D32)
+                                      : Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
             centerTitle: true,
             iconTheme: const IconThemeData(color: Colors.white),
@@ -7968,13 +8308,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ],
             leading: Builder(
               builder: (context) {
-                int unread = globalComplaints
-                    .where(
-                      (c) =>
-                          c.date.isAfter(globalAdminLastViewedComplaints) &&
-                          !globalAdminHiddenComplaints.contains(c.id),
-                    )
-                    .length;
+                final canComplaints = checkAdminPermission(widget.phone, 'can_complaints');
+                int unread = canComplaints
+                    ? globalComplaints
+                        .where(
+                          (c) =>
+                              c.date.isAfter(globalAdminLastViewedComplaints) &&
+                              !globalAdminHiddenComplaints.contains(c.id),
+                        )
+                        .length
+                    : 0;
                 return IconButton(
                   icon: Badge(
                     isLabelVisible: unread > 0,
@@ -7999,7 +8342,32 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       fontSize: 18,
                     ),
                   ),
-                  accountEmail: const Text("Administrator"),
+                  accountEmail: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.4)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.shield_outlined, color: Colors.white, size: 13),
+                          const SizedBox(width: 5),
+                          Text(
+                            "Logged in as: ${getAdminRoleDisplayName(widget.phone)}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   currentAccountPicture: CircleAvatar(
                     child:
                         (widget.photoUrl != null && widget.photoUrl!.isNotEmpty)
@@ -8016,185 +8384,192 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         : const Icon(Icons.person, color: Colors.white),
                   ),
                 ),
-                ExpansionTile(
-                  leading: const Icon(Icons.restaurant, color: brandDark),
-                  title: const Text(
-                    'Mess Entry',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  children: [
-                    // removed Breakfast switch
-                    SwitchListTile(
-                      title: const Text('Lunch'),
-                      activeColor: brandGreen,
-                      value: globalEntryL,
-                      onChanged: (v) async {
-                        if (SyncService.isSwitchCooldown) return;
-                        SyncService.setSwitchCooldown(true);
-                        
-                        setState(() => globalEntryL = v);
-                        if (v == true) {
-                          NotificationService.sendPushNotificationToStudents(
-                            "Lunch Time",
-                            "Mess Open",
-                          );
-                        }
-                        if (v == false) {
-                          await _closeMessAndMarkAbsent('l');
-                        }
-                        await SyncService.pushSwitchesNow();
-                      },
+                if (checkAdminPermission(widget.phone, 'can_manage_meals'))
+                  ExpansionTile(
+                    leading: const Icon(Icons.restaurant, color: brandDark),
+                    title: const Text(
+                      'Mess Entry',
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    SwitchListTile(
-                      title: const Text('Dinner'),
-                      activeColor: brandGreen,
-                      value: globalEntryD,
-                      onChanged: (v) async {
-                        if (SyncService.isSwitchCooldown) return;
-                        SyncService.setSwitchCooldown(true);
-                        
-                        setState(() => globalEntryD = v);
-                        if (v == true) {
-                          NotificationService.sendPushNotificationToStudents(
-                            "Dinner Time",
-                            "Mess Open",
-                          );
-                        }
-                        if (v == false) {
-                          await _closeMessAndMarkAbsent('d');
-                        }
-                        await SyncService.pushSwitchesNow();
-                      },
+                    children: [
+                      // removed Breakfast switch
+                      SwitchListTile(
+                        title: const Text('Lunch'),
+                        activeColor: brandGreen,
+                        value: globalEntryL,
+                        onChanged: (v) async {
+                          if (SyncService.isSwitchCooldown) return;
+                          SyncService.setSwitchCooldown(true);
+                          
+                          setState(() => globalEntryL = v);
+                          if (v == true) {
+                            NotificationService.sendPushNotificationToStudents(
+                              "Lunch Time",
+                              "Mess Open",
+                            );
+                          }
+                          if (v == false) {
+                            await _closeMessAndMarkAbsent('l');
+                          }
+                          await SyncService.pushSwitchesNow();
+                        },
+                      ),
+                      SwitchListTile(
+                        title: const Text('Dinner'),
+                        activeColor: brandGreen,
+                        value: globalEntryD,
+                        onChanged: (v) async {
+                          if (SyncService.isSwitchCooldown) return;
+                          SyncService.setSwitchCooldown(true);
+                          
+                          setState(() => globalEntryD = v);
+                          if (v == true) {
+                            NotificationService.sendPushNotificationToStudents(
+                              "Dinner Time",
+                              "Mess Open",
+                            );
+                          }
+                          if (v == false) {
+                            await _closeMessAndMarkAbsent('d');
+                          }
+                          await SyncService.pushSwitchesNow();
+                        },
+                      ),
+                    ],
+                  ),
+                if (checkAdminPermission(widget.phone, 'can_manage_polls'))
+                  ListTile(
+                    leading: const Icon(Icons.poll, color: brandDark),
+                    title: const Text(
+                      'Create New Poll',
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
-                  ],
-                ),
-                ListTile(
-                  leading: const Icon(Icons.poll, color: brandDark),
-                  title: const Text(
-                    'Create New Poll',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showCreatePollDialog();
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showCreatePollDialog();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.fact_check, color: brandDark),
-                  title: const Text(
-                    'Attendance Sheet',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                if (checkAdminPermission(widget.phone, 'can_attendance'))
+                  ListTile(
+                    leading: const Icon(Icons.fact_check, color: brandDark),
+                    title: const Text(
+                      'Attendance Sheet',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AdminAttendanceScreen(adminPhone: widget.phone),
+                        ),
+                      );
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AdminAttendanceScreen(),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.group, color: brandDark),
-                  title: const Text(
-                    'View All Register Student',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                if (checkAdminPermission(widget.phone, 'can_students_manage'))
+                  ListTile(
+                    leading: const Icon(Icons.group, color: brandDark),
+                    title: const Text(
+                      'View All Register Student',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              const AdminRegisteredStudentsScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            const AdminRegisteredStudentsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.set_meal, color: brandDark),
-                  title: const Text(
-                    'Set Menu (Today)',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                if (checkAdminPermission(widget.phone, 'can_manage_meals'))
+                  ListTile(
+                    leading: const Icon(Icons.set_meal, color: brandDark),
+                    title: const Text(
+                      'Set Menu (Today)',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showSetMenuDialog();
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showSetMenuDialog();
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.edit_calendar, color: brandDark),
-                  title: const Text(
-                    'Edit Weekly Timetable',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                if (checkAdminPermission(widget.phone, 'can_manage_meals'))
+                  ListTile(
+                    leading: const Icon(Icons.edit_calendar, color: brandDark),
+                    title: const Text(
+                      'Edit Weekly Timetable',
+                      style: TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      showDialog(
+                        context: context,
+                        builder: (context) => const WeeklyMenuEditorWidget(),
+                      );
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    showDialog(
-                      context: context,
-                      builder: (context) => const WeeklyMenuEditorWidget(),
-                    );
-                  },
-                ),
-                Builder(
-                  builder: (context) {
-                    int unread = globalComplaints
-                        .where(
-                          (c) =>
-                              c.date.isAfter(globalAdminLastViewedComplaints) &&
-                              !globalAdminHiddenComplaints.contains(c.id),
-                        )
-                        .length;
-                    return ListTile(
-                      leading: const Icon(
-                        Icons.report_problem_outlined,
-                        color: brandDark,
-                      ),
-                      title: Row(
-                        children: [
-                          const Text(
-                            'View Student Complaints',
-                            style: TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                          const Spacer(),
-                          if (unread > 0)
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text(
-                                unread.toString(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
+                if (checkAdminPermission(widget.phone, 'can_complaints'))
+                  Builder(
+                    builder: (context) {
+                      int unread = globalComplaints
+                          .where(
+                            (c) =>
+                                c.date.isAfter(globalAdminLastViewedComplaints) &&
+                                !globalAdminHiddenComplaints.contains(c.id),
+                          )
+                          .length;
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.report_problem_outlined,
+                          color: brandDark,
+                        ),
+                        title: Row(
+                          children: [
+                            const Text(
+                              'View Student Complaints',
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                            const Spacer(),
+                            if (unread > 0)
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Text(
+                                  unread.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
+                          ],
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          setState(() {
+                            globalAdminLastViewedComplaints = realTime;
+                          });
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => AdminComplaintsScreen(
+                                hidden: globalAdminHiddenComplaints,
+                                onDelete: (id) async {
+                                  await SyncService.deleteComplaint(id);
+                                },
+                              ),
                             ),
-                        ],
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        setState(() {
-                          globalAdminLastViewedComplaints = realTime;
-                        });
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => AdminComplaintsScreen(
-                              hidden: globalAdminHiddenComplaints,
-                              onDelete: (id) async {
-                                await SyncService.deleteComplaint(id);
-                              },
-                            ),
-                          ),
-                        ).then((_) => setState(() {}));
-                      },
-                    );
-                  },
-                ),
+                          ).then((_) => setState(() {}));
+                        },
+                      );
+                    },
+                  ),
                 const Divider(),
                 ListTile(
                   leading: const Icon(Icons.info_outline, color: brandDark),
@@ -8213,22 +8588,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   },
                 ),
                 const Divider(),
-                ListTile(
-                  leading: const Icon(Icons.people_alt, color: brandDark),
-                  title: const Text(
-                    'Manage Students',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                if (checkAdminPermission(widget.phone, 'can_students_manage'))
+                  ListTile(
+                    leading: const Icon(Icons.people_alt, color: brandDark),
+                    title: const Text(
+                      'Manage Students',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ManageStudentsScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const ManageStudentsScreen(),
-                      ),
-                    );
-                  },
-                ),
                 ListTile(
                   leading: const Icon(Icons.logout, color: Colors.redAccent),
                   title: const Text(
@@ -8289,9 +8665,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            "Admin Portal",
-                            style: TextStyle(
+                          Text(
+                            getAdminRoleDisplayName(widget.phone),
+                            style: const TextStyle(
                               color: brandGray,
                               fontSize: 13,
                               fontWeight: FontWeight.w500,
@@ -8318,14 +8694,12 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     ? _buildAdminHomeTab()
                     : _selectedIndex == 1
                     ? _buildNoticeTab()
-                    : _selectedIndex == 2
-                    ? const ViewMenuTab()
-                    : _buildAdminsTab(),
+                    : const ViewMenuTab(),
               ),
             ],
           ),
           bottomNavigationBar: BottomNavigationBar(
-            currentIndex: _selectedIndex,
+            currentIndex: _selectedIndex >= 3 ? 0 : _selectedIndex,
             onTap: (i) => setState(() => _selectedIndex = i),
             selectedItemColor: brandGreen,
             unselectedItemColor: brandGray,
@@ -8340,10 +8714,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.restaurant_menu),
                 label: "Menu",
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.admin_panel_settings),
-                label: "Admins",
               ),
             ],
           ),
@@ -9053,7 +9423,8 @@ class _MealPassScreenState extends State<MealPassScreen> {
 }
 
 class AdminAttendanceScreen extends StatefulWidget {
-  const AdminAttendanceScreen({super.key});
+  final String? adminPhone;
+  const AdminAttendanceScreen({super.key, this.adminPhone});
   @override
   State<AdminAttendanceScreen> createState() => _AdminAttendanceScreenState();
 }
@@ -9458,6 +9829,8 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await prefs.remove('last_admin_phone');
       await prefs.remove('last_admin_name');
       await prefs.remove('last_admin_photo');
+      await prefs.remove('last_admin_scope');
+      cachedAdminScope = null;
       Navigator.pop(context); // close loading
       Navigator.pushAndRemoveUntil(
         context,
@@ -10904,41 +11277,42 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                   tooltip: "Factory Reset Data",
                   onPressed: _promptResetPassword,
                 ),
-                Row(
-                  children: [
-                    const Text(
-                      "Enable Edit",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                if (widget.adminPhone == null || checkAdminPermission(widget.adminPhone!, 'can_attendance_edit'))
+                  Row(
+                    children: [
+                      const Text(
+                        "Enable Edit",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    Switch(
-                      value: isEditingEnabled,
-                      activeColor: Colors.white,
-                      onChanged: (val) {
-                        if (val) {
-                          // Force rebuild so switch visually snaps back to OFF immediately
-                          setState(() {
-                            isEditingEnabled = false;
-                          });
-                          _promptEditPassword();
-                        } else {
-                          setState(() {
-                            isEditingEnabled = false;
-                          });
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text("Editing mode disabled."),
-                              duration: Duration(seconds: 1),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                ),
+                      Switch(
+                        value: isEditingEnabled,
+                        activeColor: Colors.white,
+                        onChanged: (val) {
+                          if (val) {
+                            // Force rebuild so switch visually snaps back to OFF immediately
+                            setState(() {
+                              isEditingEnabled = false;
+                            });
+                            _promptEditPassword();
+                          } else {
+                            setState(() {
+                              isEditingEnabled = false;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text("Editing mode disabled."),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
               ], // --- TEMPORARY EDITING BLOCK END ---
               bottom: const TabBar(
                 labelColor: Colors.white,
