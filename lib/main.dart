@@ -3847,8 +3847,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ).showSnackBar(const SnackBar(content: Text('Mobile number not found in staff records.')));
         return;
       }
-      bool isFirstTime = _matchedAdmin!.pin.isEmpty ||
-          !_matchedAdmin!.isVerified ||
+      bool isFirstTime = !_matchedAdmin!.isVerified ||
+          _matchedAdmin!.pin.isEmpty ||
           _matchedAdmin!.pin == 'Hostel@123' ||
           _matchedAdmin!.pin == hashPassword('Hostel@123');
 
@@ -3864,26 +3864,13 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        bool verified = await showOtpVerificationDialog(
-          context,
-          _matchedAdmin!.email.trim(),
-          autoSend: true,
-        );
-        setState(() => _isVerifyingEmail = false);
-        if (verified) {
-          setState(() {
-            _authStage = AuthStage.newPassword;
-            adminPhotoUrl = _matchedAdmin!.photoUrl;
-            _studentPinController.clear();
-            _studentRePinController.clear();
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Email verified! Please create your password.'),
-              backgroundColor: brandGreen,
-            ),
-          );
-        }
+        setState(() {
+          _isVerifyingEmail = false;
+          _authStage = AuthStage.adminEmail;
+          adminPhotoUrl = _matchedAdmin!.photoUrl;
+          _studentPinController.clear();
+          _studentRePinController.clear();
+        });
       } else {
         setState(() {
           _isVerifyingEmail = false;
@@ -4393,6 +4380,148 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                 ),
               ),
+            ], // === STAGE: ADMIN EMAIL VERIFICATION (First-time Staff Login) ===
+            if (_authStage == AuthStage.adminEmail && _matchedAdmin != null) ...[
+              Center(
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: brandGreen.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: brandGreen.withValues(alpha: 0.25)),
+                      ),
+                      child: Text(
+                        getAdminRoleDisplayName(_matchedAdmin!.phone),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: brandGreen,
+                        ),
+                      ),
+                    ),
+                    if (_matchedAdmin!.name.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _matchedAdmin!.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: brandDark,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Center(
+                child: Icon(Icons.mark_email_read_outlined, color: brandGreen, size: 48),
+              ),
+              const SizedBox(height: 10),
+              const Center(
+                child: Text(
+                  "Email Verification",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: brandDark,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Center(
+                child: Text(
+                  "Verify your registered email to set up your password",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: brandGray),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                "Registered Email (Locked)",
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: brandDark,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  color: brandInputBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.slate.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.email_outlined, color: brandGreen, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _matchedAdmin!.email.isNotEmpty ? _matchedAdmin!.email : "No email registered",
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: brandDark,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.lock_outline, color: brandGray, size: 16),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              _buildActionButton("Send OTP", () async {
+                if (_matchedAdmin!.email.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('No email registered for this staff account. Please contact Super Admin.'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                  return;
+                }
+                setState(() => _isVerifyingEmail = true);
+                Map<String, dynamic> res = await EmailOtpService.sendOtp(_matchedAdmin!.email.trim());
+                setState(() => _isVerifyingEmail = false);
+                if (res['success'] == true) {
+                  bool verified = await showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => _OtpVerificationDialog(
+                      email: _matchedAdmin!.email.trim(),
+                      autoSend: false,
+                    ),
+                  ) ?? false;
+                  if (verified) {
+                    setState(() {
+                      _authStage = AuthStage.newPassword;
+                      adminPhotoUrl = _matchedAdmin!.photoUrl;
+                      _studentPinController.clear();
+                      _studentRePinController.clear();
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Email verified! Please create your password.'),
+                        backgroundColor: brandGreen,
+                      ),
+                    );
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(res['message']?.toString() ?? 'Failed to send OTP.'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }),
+              const SizedBox(height: 12),
+              _buildBackButton(),
             ], // === STAGE: PERSONAL PASSWORD / NEW PASSWORD / QUICK LOGIN ===
             if (_authStage == AuthStage.personalPassword ||
                 _authStage == AuthStage.newPassword ||

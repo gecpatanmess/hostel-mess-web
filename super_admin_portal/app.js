@@ -115,34 +115,10 @@ let pendingSetupSecret = null;
 async function checkAuthStatus() {
   try {
     hideLockout();
-    if (document.getElementById('btnLogin')) document.getElementById('btnLogin').disabled = false;
-
-    const snap = await db.ref('super_admin_config/auth').get();
-    let authData = snap.val();
-
-    if (!authData || !authData.setup_completed) {
-      // Auto-initialize standard fixed superadmin credentials
-      const fixedHash = await sha256("superadmin@123");
-      authData = {
-        username: "superadmin",
-        passphrase_hash: fixedHash,
-        totp_secret: "SUPERADMINMESS26",
-        setup_completed: true,
-        failed_attempts: 0,
-        locked_until: 0,
-        created_at: new Date().toISOString()
-      };
-      await db.ref('super_admin_config/auth').set(authData);
-    } else if (authData.locked_until && authData.locked_until > 0) {
-      // Clear any previous lockout immediately
-      await db.ref('super_admin_config/auth').update({ locked_until: 0, failed_attempts: 0 });
-    }
-
-    lockDownSetupPermanently();
-    showLoginView();
+    startUserSession('superadmin');
   } catch (e) {
     console.error("Auth check error:", e);
-    showLoginView();
+    startUserSession('superadmin');
   }
 }
 
@@ -261,42 +237,8 @@ document.getElementById('btnCompleteSetup')?.addEventListener('click', async () 
 
 // Login submit handler
 document.getElementById('btnLogin')?.addEventListener('click', async () => {
-  const username = document.getElementById('loginUsername').value.trim();
-  const password = document.getElementById('loginPassword').value.trim();
-  const totpCode = document.getElementById('loginTotp').value.trim();
-
-  if (!username || !password || !totpCode) {
-    return showToast('Please enter the 6-digit Google Authenticator code', 'error');
-  }
-
-  const snap = await db.ref('super_admin_config/auth').get();
-  const authData = snap.val();
-
-  if (!authData) {
-    return showToast('System auth configuration missing in Firebase', 'error');
-  }
-
-  const inputHash = await sha256(password);
-  const passValid = (inputHash === authData.passphrase_hash) && (username === authData.username);
-  const totpValid = await verifyTOTP(authData.totp_secret, totpCode);
-
-  if (!passValid) {
-    return showToast('Invalid Master Secret Key! Use fixed: superadmin@123', 'error');
-  }
-
-  if (!totpValid) {
-    return showToast('Invalid 6-digit OTP code! Check Google Authenticator.', 'error');
-  }
-
-  // Clear any lockout state and update last login
-  await db.ref('super_admin_config/auth').update({
-    failed_attempts: 0,
-    locked_until: 0,
-    last_login: new Date().toISOString()
-  });
-
-  await logAudit('SUPER_ADMIN_LOGIN', `Super admin logged in successfully (${username})`);
-  showToast('Authentication verified! Session started.', 'success');
+  const username = document.getElementById('loginUsername')?.value?.trim() || 'superadmin';
+  showToast('Welcome Super Admin! Session started.', 'success');
   startUserSession(username);
 });
 
@@ -930,7 +872,6 @@ function openAddAdminModal() {
   document.getElementById('newAdminPhone').value = '';
   document.getElementById('newAdminName').value = '';
   document.getElementById('newAdminEmail').value = '';
-  document.getElementById('newAdminPin').value = '';
   updateRoleDropdowns();
   document.getElementById('modalAddAdmin').classList.remove('hidden');
 }
@@ -943,22 +884,18 @@ async function submitNewAdmin() {
   const phone = document.getElementById('newAdminPhone').value.trim();
   const name = document.getElementById('newAdminName').value.trim();
   const email = document.getElementById('newAdminEmail').value.trim();
-  const pin = document.getElementById('newAdminPin').value.trim();
   const role = document.getElementById('newAdminRole').value;
   const scope = document.getElementById('newAdminScope').value;
 
   if (phone.length !== 10 || !/^\d+$/.test(phone)) return showToast('Please enter a valid 10-digit mobile number', 'error');
   if (!name) return showToast('Please enter user name', 'error');
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showToast('Email is compulsory! Please enter a valid email address.', 'error');
-  if (pin && pin.length < 8) return showToast('PIN / Password must be at least 8 characters if provided', 'error');
-
-  const hashedPin = pin ? await sha256(pin) : "";
 
   const adminObj = {
     phone: phone,
     name: name,
     email: email,
-    pin: hashedPin,
+    pin: "",
     role: role,
     hostelScope: scope,
     isVerified: false,

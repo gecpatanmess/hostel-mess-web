@@ -34,7 +34,7 @@
 <body class="bg-[#F6F8FC] text-[#0F172A] min-h-screen antialiased selection:bg-[#135B26] selection:text-white flex flex-col">
 
   <!-- ==================== LOGIN & 2FA AUTH OVERLAY ==================== -->
-  <div id="authScreen" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
+  <div id="authScreen" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
     <div class="w-full max-w-md bg-white border border-slate-200/90 rounded-3xl shadow-2xl p-7 sm:p-8 relative overflow-hidden my-auto">
       
       <!-- App Brand Header Badge -->
@@ -121,34 +121,16 @@
           </div>
         </div>
 
-        <div>
-          <label class="block text-xs font-bold uppercase tracking-wider text-[#64748B] mb-1.5">Google Authenticator TOTP (6 Digits)</label>
-          <div class="relative">
-            <i class="fa-solid fa-mobile-screen-button absolute left-3.5 top-3.5 text-[#135B26] text-sm"></i>
-            <input type="text" id="loginTotp" maxlength="6" autofocus placeholder="000 000" class="w-full pl-10 pr-4 py-2.5 bg-emerald-50/40 border-2 border-emerald-500/50 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none text-center font-mono text-2xl tracking-widest text-[#135B26] font-extrabold transition">
-          </div>
-          <div class="mt-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-[11px] text-[#135B26]">
-            <div class="truncate">
-              <span>Google 2FA Key: </span>
-              <strong class="font-mono select-all bg-white px-1.5 py-0.5 rounded border border-emerald-300">SUPERADMINMESS26</strong>
-            </div>
-            <button type="button" onclick="openTotpQrModal()" class="shrink-0 ml-2 text-xs font-bold text-[#135B26] hover:text-[#0E441C] underline flex items-center gap-1">
-              <i class="fa-solid fa-qrcode text-xs"></i>
-              <span>QR Code</span>
-            </button>
-          </div>
-        </div>
-
         <button id="btnLogin" class="w-full py-3 bg-[#135B26] hover:bg-[#0E441C] text-white font-bold rounded-xl text-sm transition shadow-md shadow-emerald-950/20 flex items-center justify-center gap-2">
           <i class="fa-solid fa-arrow-right-to-bracket"></i>
-          <span>Secure Sign In</span>
+          <span>Enter Super Admin Console</span>
         </button>
       </div>
     </div>
   </div>
 
   <!-- ==================== MAIN CONSOLE DASHBOARD ==================== -->
-  <div id="mainDashboard" class="hidden min-h-screen flex flex-col">
+  <div id="mainDashboard" class="min-h-screen flex flex-col">
     
     <!-- TOP APPBAR (Responsive & Mobile-Optimized) -->
     <header class="bg-gradient-to-r from-[#135B26] via-[#166D2E] to-[#135B26] text-white sticky top-0 z-40 shadow-md">
@@ -762,11 +744,6 @@
         <div>
           <label class="block font-bold text-[#64748B] mb-1">Email <span class="text-rose-500 font-bold">*</span> (Compulsory for Login Verification)</label>
           <input type="email" id="newAdminEmail" required placeholder="staff@example.com" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
-        </div>
-
-        <div>
-          <label class="block font-bold text-[#64748B] mb-1">Initial Password <span class="text-slate-400 font-normal text-[11px]">(Optional - User sets on 1st login)</span></label>
-          <input type="password" id="newAdminPin" placeholder="Leave empty for user self-setup on first login" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl focus:border-[#135B26] focus:bg-white focus:outline-none">
         </div>
 
         <div>
