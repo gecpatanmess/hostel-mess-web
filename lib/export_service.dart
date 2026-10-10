@@ -6,8 +6,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:screenshot/screenshot.dart';
-import 'main.dart';
 
 class ExportService {
   static Future<void> exportReport({
@@ -17,14 +15,10 @@ class ExportService {
     required List<List<String>> data,
     required String format,
   }) async {
-    if (kIsWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Export not available on web')));
-      return;
-    }
     try {
-      final directory = await getApplicationDocumentsDirectory();
       final String safeTitle = title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '-').replaceAll(' ', '_');
-      File? savedFile;
+      Uint8List? finalBytes;
+      String extension = '';
 
       if (format == 'excel') {
         var excel = Excel.createExcel();
@@ -35,11 +29,10 @@ class ExportService {
           sheetObject.appendRow(row.map((c) => TextCellValue(c)).toList());
         }
         
-        final String filePath = '${directory.path}/$safeTitle.xlsx';
         final List<int>? bytes = excel.encode();
         if (bytes != null) {
-           savedFile = File(filePath);
-           await savedFile.writeAsBytes(bytes);
+           finalBytes = Uint8List.fromList(bytes);
+           extension = 'xlsx';
         }
       } else if (format == 'pdf') {
         final pdf = pw.Document();
@@ -62,25 +55,33 @@ class ExportService {
             }
           )
         );
-        final String filePath = '${directory.path}/$safeTitle.pdf';
-        savedFile = File(filePath);
-        await savedFile.writeAsBytes(await pdf.save());
+        finalBytes = await pdf.save();
+        extension = 'pdf';
       } 
 
-      if (savedFile != null) {
-        final box = context.findRenderObject() as RenderBox?;
-        final rect = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
-        await Share.shareXFiles(
-          [XFile(savedFile.path)], 
-          text: 'Here is the report: $title',
-          sharePositionOrigin: rect,
-        );
+      if (finalBytes != null) {
+        if (kIsWeb) {
+            final xFile = XFile.fromData(finalBytes, name: '\.');
+            await Share.shareXFiles([xFile], text: 'Here is the report: ');
+        } else {
+            final directory = await getApplicationDocumentsDirectory();
+            final String filePath = '\/\.';
+            final savedFile = File(filePath);
+            await savedFile.writeAsBytes(finalBytes);
+            
+            final box = context.findRenderObject() as RenderBox?;
+            final rect = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
+            await Share.shareXFiles(
+              [XFile(savedFile.path)], 
+              text: 'Here is the report: ',
+              sharePositionOrigin: rect,
+            );
+        }
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: ')));
       }
     }
   }
 }
-

@@ -6,7 +6,7 @@ const CACHE_NAME = 'flutter-app-cache';
 const RESOURCES = {"assets/AssetManifest.bin": "df66b4017aa0ea4a14c769dcc9244964",
 "assets/AssetManifest.bin.json": "8e1f6f6e8b3c63066fb458cf8e9b4f46",
 "assets/assets/logo.jpg": "c22c010824b3c90acafd91ba7f0b0b6e",
-"assets/assets/mdhk_logo.png": "f753ab22bfa1aab03d67a7f1768d5657",
+"assets/assets/mdhk_logo.png": "0eb8bef193aae63e8bcc683a99acd232",
 "assets/FontManifest.json": "2b52acee7bee9f34d372a965ef37754f",
 "assets/fonts/MaterialIcons-Regular.otf": "cfaa626c480eaa8b1b7a8b979f7aef9b",
 "assets/NOTICES": "318776c69d21d64ef963f77dc6c86090",
@@ -37,16 +37,16 @@ const RESOURCES = {"assets/AssetManifest.bin": "df66b4017aa0ea4a14c769dcc9244964
 "favicon.png": "013ce332443ff5264af990339993dfd4",
 "firebase-messaging-sw.js": "6781cacca7d1c744a75bf1f2bf3c0393",
 "flutter.js": "24bc71911b75b5f8135c949e27a2984e",
-"flutter_bootstrap.js": "7b1b89ae000a548cf305420da3cbc988",
+"flutter_bootstrap.js": "38ef370e9f49b7f91e5c13f52f40388b",
 "icons/Icon-192.png": "65430f22ea33313b5e65075591f45356",
 "icons/Icon-512.png": "794b2c83f76d4392608bebac5745244a",
 "icons/Icon-maskable-192.png": "65430f22ea33313b5e65075591f45356",
 "icons/Icon-maskable-512.png": "794b2c83f76d4392608bebac5745244a",
-"index.html": "e43e412f5a07a2f8aefd2b1d3346a7c3",
-"/": "e43e412f5a07a2f8aefd2b1d3346a7c3",
-"main.dart.js": "82845834e5a0b6e4c4442d9b4855b94d",
+"index.html": "921a716827ce0b66172851d05d8ddd7a",
+"/": "921a716827ce0b66172851d05d8ddd7a",
+"main.dart.js": "0470c5b08d1a1fe95c94d4459e8688e6",
 "manifest.json": "c874c2c2880d04c1dc8d5ed8560eed77",
-"version.json": "e817124b66498ac0caa8a7ddce2e3817"};
+"version.json": "bd439ed674913653612598071045c2cd"};
 // The application shell files that are downloaded before a service worker can
 // start.
 const CORE = ["main.dart.js",

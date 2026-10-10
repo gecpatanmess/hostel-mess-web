@@ -3364,8 +3364,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Image.asset('assets/mdhk_logo.png', height: 28),
+                    const SizedBox(height: 8),
+                    Image.asset(
+                      'assets/mdhk_logo.png',
+                      height: 40,
+                      fit: BoxFit.contain,
+                    ),
                   ],
                 ),
               ),
@@ -7012,7 +7016,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  void _closeMessAndMarkAbsent(String meal) async {
+  Future<void> _closeMessAndMarkAbsent(String meal) async {
     DateTime now = realTime;
     Map<String, dynamic> batchUpdates = {};
     for (var s in globalRegisteredStudents) {
@@ -7034,6 +7038,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
     if (batchUpdates.isNotEmpty) {
       await SyncService.pushAttendanceBatch(batchUpdates);
+    }
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -7606,7 +7613,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           );
                         }
                         if (v == false) {
-                          _closeMessAndMarkAbsent('l');
+                          await _closeMessAndMarkAbsent('l');
                         }
                       },
                     ),
@@ -7624,7 +7631,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           );
                         }
                         if (v == false) {
-                          _closeMessAndMarkAbsent('d');
+                          await _closeMessAndMarkAbsent('d');
                         }
                       },
                     ),
