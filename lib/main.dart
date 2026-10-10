@@ -7017,30 +7017,40 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Future<void> _closeMessAndMarkAbsent(String meal) async {
-    DateTime now = realTime;
-    Map<String, dynamic> batchUpdates = {};
-    for (var s in globalRegisteredStudents) {
-      String key = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
-      if (globalAttendanceMap[key] == null) {
-        globalAttendanceMap[key] = DailyRecord();
+    try {
+      DateTime now = realTime;
+      Map<String, dynamic> batchUpdates = {};
+      
+      // Prevent ConcurrentModificationError by creating a copy of the list
+      List<RegisteredStudent> studentsCopy = List.from(globalRegisteredStudents);
+      
+      for (var s in studentsCopy) {
+        String key = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
+        
+        if (globalAttendanceMap[key] == null) {
+          globalAttendanceMap[key] = DailyRecord();
+        }
+        if (meal == 'l' &&
+            (globalAttendanceMap[key]!.l == '' ||
+                globalAttendanceMap[key]!.l == '-')) {
+          globalAttendanceMap[key]!.l = 'A';
+          batchUpdates['$key/l'] = 'A';
+        } else if (meal == 'd' &&
+            (globalAttendanceMap[key]!.d == '' ||
+                globalAttendanceMap[key]!.d == '-')) {
+          globalAttendanceMap[key]!.d = 'A';
+          batchUpdates['$key/d'] = 'A';
+        }
       }
-      if (meal == 'l' &&
-          (globalAttendanceMap[key]!.l == '' ||
-              globalAttendanceMap[key]!.l == '-')) {
-        globalAttendanceMap[key]!.l = 'A';
-        batchUpdates['$key/l'] = 'A';
-      } else if (meal == 'd' &&
-          (globalAttendanceMap[key]!.d == '' ||
-              globalAttendanceMap[key]!.d == '-')) {
-        globalAttendanceMap[key]!.d = 'A';
-        batchUpdates['$key/d'] = 'A';
+      
+      if (batchUpdates.isNotEmpty) {
+        await SyncService.pushAttendanceBatch(batchUpdates);
       }
-    }
-    if (batchUpdates.isNotEmpty) {
-      await SyncService.pushAttendanceBatch(batchUpdates);
-    }
-    if (mounted) {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print("Error in _closeMessAndMarkAbsent: $e");
     }
   }
 
@@ -7605,7 +7615,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       value: globalEntryL,
                       onChanged: (v) async {
                         setState(() => globalEntryL = v);
-                        await SyncService.pushSwitchesNow();
                         if (v == true) {
                           NotificationService.sendPushNotificationToStudents(
                             "Lunch Time",
@@ -7615,6 +7624,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         if (v == false) {
                           await _closeMessAndMarkAbsent('l');
                         }
+                        await SyncService.pushSwitchesNow();
                       },
                     ),
                     SwitchListTile(
@@ -7623,7 +7633,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       value: globalEntryD,
                       onChanged: (v) async {
                         setState(() => globalEntryD = v);
-                        await SyncService.pushSwitchesNow();
                         if (v == true) {
                           NotificationService.sendPushNotificationToStudents(
                             "Dinner Time",
@@ -7633,6 +7642,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         if (v == false) {
                           await _closeMessAndMarkAbsent('d');
                         }
+                        await SyncService.pushSwitchesNow();
                       },
                     ),
                   ],
