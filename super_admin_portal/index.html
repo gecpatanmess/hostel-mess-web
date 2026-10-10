@@ -141,54 +141,85 @@
   <!-- ==================== MAIN CONSOLE DASHBOARD ==================== -->
   <div id="mainDashboard" class="hidden min-h-screen flex flex-col">
     
-    <!-- TOP APPBAR (Matches App's signature brand green AppBar) -->
-    <header class="bg-gradient-to-r from-[#135B26] via-[#166D2E] to-[#135B26] text-white px-3 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-40 shadow-md">
-      <div class="flex items-center gap-2.5 sm:gap-3">
-        <!-- Mobile Hamburger Button -->
-        <button id="btnMobileMenu" onclick="toggleMobileSidebar()" class="lg:hidden p-2 -ml-1 rounded-xl text-white hover:bg-white/10 focus:outline-none transition" aria-label="Toggle Navigation">
-          <i class="fa-solid fa-bars text-base sm:text-lg"></i>
-        </button>
+    <!-- TOP APPBAR (Responsive & Mobile-Optimized) -->
+    <header class="bg-gradient-to-r from-[#135B26] via-[#166D2E] to-[#135B26] text-white sticky top-0 z-40 shadow-md">
+      <!-- Main Top Bar Row -->
+      <div class="px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+          <!-- Mobile Hamburger Button -->
+          <button id="btnMobileMenu" onclick="toggleMobileSidebar()" class="lg:hidden p-1.5 -ml-1 rounded-xl text-white hover:bg-white/10 focus:outline-none transition shrink-0" aria-label="Toggle Navigation">
+            <i class="fa-solid fa-bars text-lg sm:text-xl"></i>
+          </button>
 
-        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-white shadow-inner shrink-0">
-          <i class="fa-solid fa-utensils text-base sm:text-lg"></i>
-        </div>
-        <div class="truncate">
-          <div class="flex items-center gap-2">
-            <h1 class="font-extrabold text-sm sm:text-base lg:text-lg text-white tracking-wide truncate">Hostel Mess Management</h1>
-            <span class="px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] uppercase font-extrabold bg-amber-400 text-[#0F172A] rounded shadow-xs shrink-0">
-              SUPER ADMIN
-            </span>
+          <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white/15 border border-white/20 flex items-center justify-center text-white shadow-inner shrink-0">
+            <i class="fa-solid fa-utensils text-sm sm:text-base"></i>
           </div>
-          <p class="hidden sm:block text-[11px] text-emerald-100/90 font-medium truncate">Master Security & Dynamic Permission Console</p>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 sm:gap-2">
+              <h1 class="font-extrabold text-sm sm:text-base lg:text-lg text-white tracking-tight truncate">Hostel Mess</h1>
+              <span class="px-1.5 py-0.5 text-[9px] sm:text-[10px] uppercase font-extrabold bg-amber-400 text-[#0F172A] rounded shadow-xs shrink-0">
+                SUPER ADMIN
+              </span>
+            </div>
+            <p class="hidden sm:block text-[11px] text-emerald-100/90 font-medium truncate">Master Security & Dynamic Permission Console</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <!-- Live status badge (Desktop only) -->
+          <div class="hidden xl:flex items-center gap-2 px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs text-white">
+            <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+            <span>Firebase Live</span>
+          </div>
+
+          <!-- Inactivity session timer (Tablet & Desktop) -->
+          <div class="hidden md:flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-white/10 border border-white/20 rounded-full text-[11px] sm:text-xs text-emerald-100">
+            <i class="fa-regular fa-clock text-amber-300"></i>
+            <span>Lock: <strong id="sessionTimerText" class="text-white font-mono">15:00</strong></span>
+          </div>
+
+          <!-- Hostel Scope Selector (Ultra-Compact on Mobile) -->
+          <div class="flex items-center bg-black/25 border border-white/15 rounded-xl p-0.5 text-[11px] sm:text-xs font-semibold">
+            <button id="scopeAll" onclick="setScope('all')" class="px-2 sm:px-2.5 py-1 rounded-lg transition bg-white text-[#135B26] shadow-xs">Both</button>
+            <button id="scopeBoys" onclick="setScope('boys')" class="px-2 sm:px-2.5 py-1 rounded-lg transition text-emerald-100 hover:text-white">Boys</button>
+            <button id="scopeGirls" onclick="setScope('girls')" class="px-2 sm:px-2.5 py-1 rounded-lg transition text-emerald-100 hover:text-white">Girls</button>
+          </div>
+
+          <!-- Logout button -->
+          <button id="btnLogout" class="px-2.5 py-1.5 sm:px-3 bg-red-600/85 hover:bg-red-600 text-white border border-red-400/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+            <i class="fa-solid fa-power-off text-xs"></i>
+            <span class="hidden sm:inline">Logout</span>
+          </button>
         </div>
       </div>
 
-      <div class="flex items-center gap-2 sm:gap-3.5">
-        <!-- Live status badge -->
-        <div class="hidden xl:flex items-center gap-2 px-3 py-1 bg-white/10 border border-white/20 rounded-full text-xs text-white">
-          <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
-          <span>Firebase Connected</span>
-        </div>
-
-        <!-- Inactivity session timer -->
-        <div class="hidden md:flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-white/10 border border-white/20 rounded-full text-[11px] sm:text-xs text-emerald-100">
-          <i class="fa-regular fa-clock text-amber-300"></i>
-          <span>Auto-lock: <strong id="sessionTimerText" class="text-white font-mono">15:00</strong></span>
-        </div>
-
-        <!-- Hostel Scope Selector (Responsive Segment Pill) -->
-        <div class="flex items-center bg-black/20 border border-white/15 rounded-xl p-0.5 sm:p-1 text-[11px] sm:text-xs">
-          <button id="scopeAll" class="px-2 sm:px-3 py-1 rounded-lg font-bold transition bg-white text-[#135B26] shadow-sm">Both</button>
-          <button id="scopeBoys" class="px-2 sm:px-3 py-1 rounded-lg font-medium transition text-emerald-100 hover:text-white">Boys</button>
-          <button id="scopeGirls" class="px-2 sm:px-3 py-1 rounded-lg font-medium transition text-emerald-100 hover:text-white">Girls</button>
-        </div>
-
-        <!-- Logout button -->
-        <button id="btnLogout" class="px-2.5 sm:px-3 py-1.5 bg-red-600/80 hover:bg-red-600 text-white border border-red-400/40 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
-          <i class="fa-solid fa-power-off text-xs"></i>
-          <span class="hidden sm:inline">Logout</span>
+      <!-- MOBILE TOP HORIZONTAL NAVIGATION BAR (Ultra-Smooth Tabs for Small & Medium Screens) -->
+      <nav class="lg:hidden flex items-center gap-1.5 px-2.5 py-1.5 bg-black/20 overflow-x-auto no-scrollbar border-t border-white/10 text-xs">
+        <button data-tab="tabOverview" class="nav-tab-mobile active px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0">
+          <i class="fa-solid fa-chart-pie text-xs"></i>
+          <span>Overview</span>
         </button>
-      </div>
+        <button data-tab="tabRoles" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
+          <i class="fa-solid fa-users-gear text-xs"></i>
+          <span>Roles & RBAC</span>
+        </button>
+        <button data-tab="tabAdmins" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
+          <i class="fa-solid fa-user-shield text-xs"></i>
+          <span>Staff Directory</span>
+        </button>
+        <button data-tab="tabAttendance" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
+          <i class="fa-solid fa-calendar-check text-xs"></i>
+          <span>Live Attendance</span>
+        </button>
+        <button data-tab="tabNotices" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
+          <i class="fa-solid fa-bullhorn text-xs"></i>
+          <span>Notices</span>
+        </button>
+        <button data-tab="tabAudit" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
+          <i class="fa-solid fa-shield-cat text-xs"></i>
+          <span>Audit Trail</span>
+        </button>
+      </nav>
     </header>
 
     <div class="flex-1 flex overflow-hidden relative">
@@ -251,65 +282,66 @@
       </aside>
 
       <!-- MAIN CONTENT VIEW AREA -->
-      <main class="flex-1 bg-[#F6F8FC] p-5 sm:p-7 overflow-y-auto">
+      <main class="flex-1 bg-[#F6F8FC] p-3.5 sm:p-6 overflow-y-auto">
 
         <!-- ==================== TAB 1: OVERVIEW ==================== -->
-        <section id="tabOverview" class="tab-pane space-y-6">
+        <section id="tabOverview" class="tab-pane space-y-5 sm:space-y-6">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-2xl font-extrabold text-[#0F172A] tracking-tight">System Overview</h2>
-              <p class="text-xs text-[#64748B] mt-0.5">Real-time statistics across Boys & Girls hostels</p>
+              <h2 class="text-xl sm:text-2xl font-extrabold text-[#0F172A] tracking-tight">System Overview</h2>
+              <p class="text-[11px] sm:text-xs text-[#64748B] mt-0.5">Real-time statistics across Boys & Girls hostels</p>
             </div>
-            <button onclick="refreshAllData()" class="px-4 py-2 bg-white border border-slate-200/90 hover:border-[#135B26] hover:text-[#135B26] rounded-xl text-xs font-bold text-[#0F172A] transition shadow-sm flex items-center gap-2">
+            <button onclick="refreshAllData()" class="px-3 sm:px-4 py-1.5 sm:py-2 bg-white border border-slate-200/90 hover:border-[#135B26] hover:text-[#135B26] rounded-xl text-xs font-bold text-[#0F172A] transition shadow-xs flex items-center gap-1.5 sm:gap-2">
               <i class="fa-solid fa-rotate text-[#135B26]"></i>
-              <span>Refresh Data</span>
+              <span class="hidden sm:inline">Refresh Data</span>
+              <span class="sm:hidden">Refresh</span>
             </button>
           </div>
 
-          <!-- Stats Cards -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div class="app-card p-5">
-              <div class="flex items-center justify-between text-[#64748B] mb-2">
-                <span class="text-xs font-bold uppercase tracking-wider">Boys Students</span>
-                <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <i class="fa-solid fa-mars text-sm"></i>
+          <!-- Stats Cards (2-cols on mobile, 4-cols on lg screens) -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="app-card p-3.5 sm:p-5">
+              <div class="flex items-center justify-between text-[#64748B] mb-1.5 sm:mb-2">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Boys Students</span>
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <i class="fa-solid fa-mars text-xs sm:text-sm"></i>
                 </div>
               </div>
-              <div class="text-3xl font-extrabold text-[#0F172A]" id="statBoysCount">0</div>
-              <p class="text-[11px] text-[#64748B] mt-1">Registered in Boys Hostel</p>
+              <div class="text-2xl sm:text-3xl font-extrabold text-[#0F172A]" id="statBoysCount">0</div>
+              <p class="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5 truncate">Registered Boys</p>
             </div>
 
-            <div class="app-card p-5">
-              <div class="flex items-center justify-between text-[#64748B] mb-2">
-                <span class="text-xs font-bold uppercase tracking-wider">Girls Students</span>
-                <div class="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center">
-                  <i class="fa-solid fa-venus text-sm"></i>
+            <div class="app-card p-3.5 sm:p-5">
+              <div class="flex items-center justify-between text-[#64748B] mb-1.5 sm:mb-2">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Girls Students</span>
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0">
+                  <i class="fa-solid fa-venus text-xs sm:text-sm"></i>
                 </div>
               </div>
-              <div class="text-3xl font-extrabold text-[#0F172A]" id="statGirlsCount">0</div>
-              <p class="text-[11px] text-[#64748B] mt-1">Registered in Girls Hostel</p>
+              <div class="text-2xl sm:text-3xl font-extrabold text-[#0F172A]" id="statGirlsCount">0</div>
+              <p class="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5 truncate">Registered Girls</p>
             </div>
 
-            <div class="app-card p-5">
-              <div class="flex items-center justify-between text-[#64748B] mb-2">
-                <span class="text-xs font-bold uppercase tracking-wider">Active Staff & Admins</span>
-                <div class="w-8 h-8 rounded-lg bg-[#E8F5E9] text-[#135B26] flex items-center justify-center">
-                  <i class="fa-solid fa-user-shield text-sm"></i>
+            <div class="app-card p-3.5 sm:p-5">
+              <div class="flex items-center justify-between text-[#64748B] mb-1.5 sm:mb-2">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Active Staff</span>
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#E8F5E9] text-[#135B26] flex items-center justify-center shrink-0">
+                  <i class="fa-solid fa-user-shield text-xs sm:text-sm"></i>
                 </div>
               </div>
-              <div class="text-3xl font-extrabold text-[#135B26]" id="statAdminsCount">0</div>
-              <p class="text-[11px] text-[#64748B] mt-1">Admins & Committee members</p>
+              <div class="text-2xl sm:text-3xl font-extrabold text-[#135B26]" id="statAdminsCount">0</div>
+              <p class="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5 truncate">Staff & Committee</p>
             </div>
 
-            <div class="app-card p-5">
-              <div class="flex items-center justify-between text-[#64748B] mb-2">
-                <span class="text-xs font-bold uppercase tracking-wider">Defined Roles</span>
-                <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                  <i class="fa-solid fa-users-gear text-sm"></i>
+            <div class="app-card p-3.5 sm:p-5">
+              <div class="flex items-center justify-between text-[#64748B] mb-1.5 sm:mb-2">
+                <span class="text-[10px] sm:text-xs font-bold uppercase tracking-wider">Defined Roles</span>
+                <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+                  <i class="fa-solid fa-users-gear text-xs sm:text-sm"></i>
                 </div>
               </div>
-              <div class="text-3xl font-extrabold text-purple-700" id="statRolesCount">0</div>
-              <p class="text-[11px] text-[#64748B] mt-1">Dynamic RBAC Permission Groups</p>
+              <div class="text-2xl sm:text-3xl font-extrabold text-purple-700" id="statRolesCount">0</div>
+              <p class="text-[10px] sm:text-[11px] text-[#64748B] mt-0.5 truncate">RBAC Groups</p>
             </div>
           </div>
 
@@ -464,7 +496,7 @@
               <span class="text-[11px] text-[#64748B]">Deleting revokes mobile app access immediately</span>
             </div>
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
+              <table class="w-full text-left text-xs min-w-[640px]">
                 <thead class="bg-slate-100 text-[#64748B] uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th class="py-3 px-4">Staff Name & Contact</th>
@@ -539,7 +571,7 @@
           <!-- Attendance Table -->
           <div class="app-card overflow-hidden">
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
+              <table class="w-full text-left text-xs min-w-[540px]">
                 <thead class="bg-slate-100 text-[#64748B] uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th class="py-3 px-4">Room No</th>
@@ -625,7 +657,7 @@
 
           <div class="app-card overflow-hidden">
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
+              <table class="w-full text-left text-xs min-w-[600px]">
                 <thead class="bg-slate-100 text-[#64748B] uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th class="py-3 px-4">Timestamp</th>
@@ -647,8 +679,8 @@
   </div>
 
   <!-- ==================== MODAL: CREATE ROLE ==================== -->
-  <div id="modalCreateRole" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-    <div class="w-full max-w-lg bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+  <div id="modalCreateRole" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-lg bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-100 pb-3">
         <h3 class="font-bold text-base text-[#0F172A] flex items-center gap-2">
           <i class="fa-solid fa-users-gear text-[#135B26]"></i>
@@ -720,8 +752,8 @@
   </div>
 
   <!-- ==================== MODAL: ADD ADMIN / COMMITTEE MEMBER ==================== -->
-  <div id="modalAddAdmin" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-    <div class="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+  <div id="modalAddAdmin" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-100 pb-3">
         <h3 class="font-bold text-base text-[#0F172A] flex items-center gap-2">
           <i class="fa-solid fa-user-plus text-[#135B26]"></i>
@@ -778,8 +810,8 @@
   </div>
 
   <!-- ==================== MODAL: EDIT STAFF ROLE & SCOPE ==================== -->
-  <div id="modalEditAdmin" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-    <div class="w-full max-w-md bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+  <div id="modalEditAdmin" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-md bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
       <div class="flex items-center justify-between border-b border-slate-100 pb-3">
         <h3 class="font-bold text-base text-[#0F172A] flex items-center gap-2">
           <i class="fa-solid fa-pen-to-square text-[#135B26]"></i>
@@ -829,8 +861,8 @@
   </div>
 
   <!-- ==================== MODAL: CONFIRM REVOKE & DELETE ==================== -->
-  <div id="modalConfirmDelete" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-    <div class="w-full max-w-sm bg-white border border-slate-200 rounded-3xl shadow-2xl p-6 text-center space-y-4">
+  <div id="modalConfirmDelete" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-sm bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-6 text-center space-y-4">
       <div class="w-14 h-14 rounded-full bg-red-50 text-red-600 border border-red-200 flex items-center justify-center text-2xl mx-auto">
         <i class="fa-solid fa-triangle-exclamation"></i>
       </div>

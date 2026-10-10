@@ -385,17 +385,17 @@ function setScope(scope) {
   currentScope = scope;
   ['scopeAll', 'scopeBoys', 'scopeGirls'].forEach(id => {
     const el = document.getElementById(id);
-    el.className = "px-3 py-1 rounded-lg font-medium transition text-emerald-100 hover:text-white";
+    if (el) el.className = "px-2 sm:px-2.5 py-1 rounded-lg transition text-emerald-100 hover:text-white";
   });
   const activeEl = document.getElementById(scope === 'all' ? 'scopeAll' : (scope === 'boys' ? 'scopeBoys' : 'scopeGirls'));
-  activeEl.className = "px-3 py-1 rounded-lg font-bold transition bg-white text-[#135B26] shadow-sm";
+  if (activeEl) activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-white text-[#135B26] shadow-xs";
 
   renderAdminsTable();
   updateOverviewStats();
   showToast(`Active Scope: ${scope.toUpperCase()} HOSTELS`, 'info');
 }
 
-document.querySelectorAll('.nav-btn').forEach(btn => {
+document.querySelectorAll('.nav-btn, .nav-tab-mobile').forEach(btn => {
   btn.addEventListener('click', () => {
     const tabId = btn.getAttribute('data-tab');
     switchTab(tabId);
@@ -434,6 +434,19 @@ function switchTab(tabId) {
       btn.classList.add('active');
     } else {
       btn.classList.remove('active');
+    }
+  });
+
+  document.querySelectorAll('.nav-tab-mobile').forEach(btn => {
+    if (btn.getAttribute('data-tab') === tabId) {
+      btn.classList.add('active');
+      btn.classList.remove('text-emerald-100/90');
+      try {
+        btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      } catch (e) {}
+    } else {
+      btn.classList.remove('active');
+      btn.classList.add('text-emerald-100/90');
     }
   });
 
