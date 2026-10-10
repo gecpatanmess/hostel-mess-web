@@ -770,12 +770,14 @@ class RegisteredStudent {
   String? photoUrl;
   String pin;
   String email;
+  String? fcmToken;
   RegisteredStudent(
     this.name,
     this.roomNo,
     this.photoUrl,
     this.pin, {
     this.email = '',
+    this.fcmToken,
   });
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -783,6 +785,7 @@ class RegisteredStudent {
     'photoUrl': photoUrl ?? '',
     'pin': pin,
     'email': email,
+    if (fcmToken != null && fcmToken!.isNotEmpty) 'fcmToken': fcmToken,
   };
   factory RegisteredStudent.fromJson(Map<String, dynamic> json) {
     String parseStr(dynamic val) {
@@ -805,6 +808,7 @@ class RegisteredStudent {
       parseNullableStr(json['photoUrl'] ?? json['photo']),
       parseStr(json['pin']),
       email: parseStr(json['email']),
+      fcmToken: parseNullableStr(json['fcmToken']),
     );
   }
   bool get isValid => name.isNotEmpty && roomNo.isNotEmpty;
@@ -1476,6 +1480,10 @@ class SyncService {
         'photoUrl': target.photoUrl ?? "",
         'email': target.email,
       };
+      // Preserve FCM token
+      if (target.fcmToken != null && target.fcmToken!.isNotEmpty) {
+        updateData['fcmToken'] = target.fcmToken;
+      }
       
       await _dbRef.child('students').child(idx.toString()).update(updateData);
       globalSyncTrigger.value++;
@@ -1495,6 +1503,10 @@ class SyncService {
         updates['$i/pin'] = s.pin;
         updates['$i/photoUrl'] = s.photoUrl ?? "";
         updates['$i/email'] = s.email;
+        // CRITICAL: Preserve FCM token so notifications keep working
+        if (s.fcmToken != null && s.fcmToken!.isNotEmpty) {
+          updates['$i/fcmToken'] = s.fcmToken;
+        }
       }
       
       final snap = await _dbRef.child('students').get();
@@ -1613,12 +1625,18 @@ class SyncService {
     List<Map<String, dynamic>> studentsList = [];
     for (var s in globalRegisteredStudents) {
       String photoUrl = s.photoUrl ?? '';
-      studentsList.add({
+      Map<String, dynamic> studentMap = {
         'name': s.name,
         'roomNo': s.roomNo,
         'pin': s.pin,
         'photoUrl': photoUrl,
-      });
+        'email': s.email,
+      };
+      // CRITICAL: Preserve FCM token so notifications keep working
+      if (s.fcmToken != null && s.fcmToken!.isNotEmpty) {
+        studentMap['fcmToken'] = s.fcmToken;
+      }
+      studentsList.add(studentMap);
     }
     data['students'] = studentsList;
     Map<String, dynamic> attendanceData = {};

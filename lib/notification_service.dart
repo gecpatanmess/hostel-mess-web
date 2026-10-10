@@ -29,6 +29,13 @@ class NotificationService {
           Map students = snap.value as Map;
           for (var key in students.keys) {
             await FirebaseDatabase.instance.ref('hostelData_$globalHostelMode/students/$key/fcmToken').set(token);
+            // Also update the local model so token is preserved on next push
+            try {
+              int idx = int.parse(key.toString());
+              if (idx >= 0 && idx < globalRegisteredStudents.length) {
+                globalRegisteredStudents[idx].fcmToken = token;
+              }
+            } catch (_) {}
             print("Saved FCM token for student $identifier");
             break;
           }
