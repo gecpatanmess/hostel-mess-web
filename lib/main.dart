@@ -1326,26 +1326,29 @@ class SyncService {
           }
         }
         globalMonthlyPaid.clear();
-        globalEntryL = false;
-        globalEntryD = false;
-        _switchCooldown = false;
         if (data['paid'] != null) {
           (data['paid'] as Map).forEach((k, v) {
             globalMonthlyPaid[k.toString()] = (v as num).toInt();
           });
         }
-        if (data['switches'] != null) {
-          globalEntryL = data['switches']['globalEntryL'] ?? false;
-          globalEntryD = data['switches']['globalEntryD'] ?? false;
-        }
-        globalAttendanceMap.clear();
-        if (data['attendance'] != null) {
-          (data['attendance'] as Map).forEach((k, v) {
-            var rec = DailyRecord();
-            rec.l = v['l'] ?? '';
-            rec.d = v['d'] ?? '';
-            globalAttendanceMap[k.toString()] = rec;
-          });
+        // CRITICAL: Don't overwrite switches or attendance during cooldown
+        // (admin just toggled OFF and is pushing absent marks)
+        if (!_switchCooldown) {
+          globalEntryL = false;
+          globalEntryD = false;
+          if (data['switches'] != null) {
+            globalEntryL = data['switches']['globalEntryL'] ?? false;
+            globalEntryD = data['switches']['globalEntryD'] ?? false;
+          }
+          globalAttendanceMap.clear();
+          if (data['attendance'] != null) {
+            (data['attendance'] as Map).forEach((k, v) {
+              var rec = DailyRecord();
+              rec.l = v['l'] ?? '';
+              rec.d = v['d'] ?? '';
+              globalAttendanceMap[k.toString()] = rec;
+            });
+          }
         }
         SyncService.dynamicPolls.clear();
         if (data['dynamic_polls'] != null) {
@@ -1593,7 +1596,7 @@ class SyncService {
     } catch (e) {
       print("Push switches error: $e");
     }
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 10), () {
       _switchCooldown = false;
     });
   }
@@ -1773,26 +1776,28 @@ class SyncService {
           }
         }
         globalMonthlyPaid.clear();
-        globalEntryL = false;
-        globalEntryD = false;
-        _switchCooldown = false;
         if (data['paid'] != null) {
           (data['paid'] as Map).forEach((k, v) {
             globalMonthlyPaid[k.toString()] = (v as num).toInt();
           });
         }
-        if (data['switches'] != null) {
-          globalEntryL = data['switches']['globalEntryL'] ?? false;
-          globalEntryD = data['switches']['globalEntryD'] ?? false;
-        }
-        globalAttendanceMap.clear();
-        if (data['attendance'] != null) {
-          (data['attendance'] as Map).forEach((k, v) {
-            var rec = DailyRecord();
-            rec.l = v['l'] ?? '';
-            rec.d = v['d'] ?? '';
-            globalAttendanceMap[k.toString()] = rec;
-          });
+        // CRITICAL: Don't overwrite switches or attendance during cooldown
+        if (!_switchCooldown) {
+          globalEntryL = false;
+          globalEntryD = false;
+          if (data['switches'] != null) {
+            globalEntryL = data['switches']['globalEntryL'] ?? false;
+            globalEntryD = data['switches']['globalEntryD'] ?? false;
+          }
+          globalAttendanceMap.clear();
+          if (data['attendance'] != null) {
+            (data['attendance'] as Map).forEach((k, v) {
+              var rec = DailyRecord();
+              rec.l = v['l'] ?? '';
+              rec.d = v['d'] ?? '';
+              globalAttendanceMap[k.toString()] = rec;
+            });
+          }
         }
         SyncService.dynamicPolls.clear();
         if (data['dynamic_polls'] != null) {
