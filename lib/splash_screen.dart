@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Brand colors (imported implicitly in main or defined here)
-const Color brandGreen = Color(0xFF135B26);
+const Color brandGreen = Color(0xFFEA580C);
 const Color brandBg = Color(0xFFF6F8FC);
 const Color brandDark = Color(0xFF0F172A);
 const Color brandGray = Color(0xFF64748B);
