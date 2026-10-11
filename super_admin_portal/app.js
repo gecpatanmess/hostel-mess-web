@@ -1,7 +1,7 @@
 /**
  * Hostel Mess Management - Super Admin Security Console
- * 2FA (Google Authenticator TOTP RFC 6238) + Linux-style RBAC Engine
- * Hardened Security: One-Time Permanent Setup Lock + Full Staff/Committee Member CRUD
+ * 32-Bit Master Secret Key + Dynamic RBAC Console
+ * Hardened Security: Direct 32-bit Key Auth + Full Staff/Committee Member CRUD
  */
 
 // ==================== FIREBASE INITIALIZATION ====================
@@ -35,226 +35,13 @@ let currentAttSubView = 'daily'; // 'daily' or 'monthly'
 let cachedDailyList = [];
 let cachedMonthlyList = [];
 
-// ==================== CRYPTOGRAPHIC & TOTP ENGINE (RFC 6238) ====================
+// ==================== SUPER ADMIN AUTHENTICATION (32-BIT MASTER KEY) ====================
 
-// SHA-256 Hash helper
-async function sha256(str) {
-  const buf = new TextEncoder().encode(str);
-  const hashBuf = await window.crypto.subtle.digest('SHA-256', buf);
-  const hashArray = Array.from(new Uint8Array(hashBuf));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Base32 Decode for Google Authenticator TOTP
-function base32ToBytes(base32) {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let clean = base32.toUpperCase().replace(/=+$/, '').replace(/[^A-Z2-7]/g, '');
-  let bits = '';
-  for (let i = 0; i < clean.length; i++) {
-    let val = alphabet.indexOf(clean[i]);
-    if (val === -1) continue;
-    bits += val.toString(2).padStart(5, '0');
-  }
-  let bytes = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8) {
-    bytes.push(parseInt(bits.substr(i, 8), 2));
-  }
-  return new Uint8Array(bytes);
-}
-
-// Generate random Base32 secret (16 chars = 80 bits standard)
-function generateRandomBase32Secret(length = 16) {
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  let secret = '';
-  const randomBytes = new Uint8Array(length);
-  window.crypto.getRandomValues(randomBytes);
-  for (let i = 0; i < length; i++) {
-    secret += alphabet[randomBytes[i] % alphabet.length];
-  }
-  return secret;
-}
-
-// HOTP calculation (RFC 4226)
-async function generateHOTP(secretBase32, counter) {
-  const keyBytes = base32ToBytes(secretBase32);
-  const cryptoKey = await window.crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'HMAC', hash: 'SHA-1' },
-    false,
-    ['sign']
-  );
-  const counterBuffer = new ArrayBuffer(8);
-  const counterView = new DataView(counterBuffer);
-  counterView.setUint32(4, counter, false); // 64-bit integer big-endian
-  const signature = await window.crypto.subtle.sign('HMAC', cryptoKey, counterBuffer);
-  const hmac = new Uint8Array(signature);
-  const offset = hmac[hmac.length - 1] & 0x0f;
-  const binary =
-    ((hmac[offset] & 0x7f) << 24) |
-    ((hmac[offset + 1] & 0xff) << 16) |
-    ((hmac[offset + 2] & 0xff) << 8) |
-    (hmac[offset + 3] & 0xff);
-  const otp = (binary % 1000000).toString().padStart(6, '0');
-  return otp;
-}
-
-// TOTP verify with 1 time-step tolerance (prevents small device clock drifts)
-async function verifyTOTP(secretBase32, inputCode) {
-  const cleanCode = inputCode.trim();
-  const epoch = Math.floor(Date.now() / 1000);
-  const counter = Math.floor(epoch / 30);
-  for (let offset = -1; offset <= 1; offset++) {
-    const expected = await generateHOTP(secretBase32, counter + offset);
-    if (expected === cleanCode) return true;
-  }
-  return false;
-}
-
-// ==================== AUTHENTICATION & ONE-TIME SETUP LOCK ====================
-
-let pendingSetupSecret = null;
-
-async function checkAuthStatus() {
-  try {
-    hideLockout();
-    startUserSession('superadmin');
-  } catch (e) {
-    console.error("Auth check error:", e);
-    startUserSession('superadmin');
-  }
-}
-
-// Permanently eliminates the "First time setup" button and disables setup mode
-function lockDownSetupPermanently() {
-  isSetupPermanentlyLocked = true;
-  const switchContainer = document.getElementById('setupSwitchContainer');
-  if (switchContainer) {
-    switchContainer.remove(); // Obliterated completely from DOM
-  }
-  const setupView = document.getElementById('setupView');
-  if (setupView) {
-    setupView.remove(); // Remove setup form entirely from DOM for security
-  }
-}
-
-async function initSetupMode() {
-  if (isSetupPermanentlyLocked) {
-    showToast('Setup is already permanently completed and locked.', 'error');
-    showLoginView();
-    return;
-  }
-
-  // Direct check to ensure no overwrite
-  const snap = await db.ref('super_admin_config/auth').get();
-  const authData = snap.val();
-  if (authData && authData.setup_completed) {
-    lockDownSetupPermanently();
-    showLoginView();
-    return;
-  }
-
-  const setupEl = document.getElementById('setupView');
-  const loginEl = document.getElementById('loginView');
-  if (!setupEl || !loginEl) return;
-
-  setupEl.classList.remove('hidden');
-  loginEl.classList.add('hidden');
-
-  pendingSetupSecret = generateRandomBase32Secret(16);
-  document.getElementById('setupManualSecret').innerText = pendingSetupSecret;
-
-  const username = document.getElementById('setupUsername')?.value.trim() || 'superadmin';
-  const otpauthUrl = `otpauth://totp/HostelMess:${encodeURIComponent(username)}?secret=${pendingSetupSecret}&issuer=HostelMessSystem`;
-
-  // Generate QR code using QR server API
-  const qrImg = document.getElementById('qrImage');
-  if (qrImg) {
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(otpauthUrl)}`;
-  }
-}
-
-function showLoginView() {
-  const setupEl = document.getElementById('setupView');
-  if (setupEl) setupEl.classList.add('hidden');
-  const loginEl = document.getElementById('loginView');
-  if (loginEl) loginEl.classList.remove('hidden');
-}
-
-function showLockout(msg) {
-  const banner = document.getElementById('lockoutBanner');
-  banner.classList.remove('hidden');
-  document.getElementById('lockoutMsg').innerText = msg;
-}
-
-function hideLockout() {
-  document.getElementById('lockoutBanner').classList.add('hidden');
-}
-
-// Setup completion handler (Strictly guarded against re-initialization)
-document.getElementById('btnCompleteSetup')?.addEventListener('click', async () => {
-  if (isSetupPermanentlyLocked) {
-    return showToast('Forbidden: Super Admin setup is already permanently locked!', 'error');
-  }
-
-  // Pre-check Firebase directly
-  const checkSnap = await db.ref('super_admin_config/auth').get();
-  const existingAuth = checkSnap.val();
-  if (existingAuth && existingAuth.setup_completed) {
-    lockDownSetupPermanently();
-    showLoginView();
-    return showToast('Forbidden: Master account is already initialized and locked!', 'error');
-  }
-
-  const username = document.getElementById('setupUsername').value.trim();
-  const passphrase = document.getElementById('setupPassphrase').value.trim();
-  const verifyCode = document.getElementById('setupVerifyCode').value.trim();
-
-  if (!username) return showToast('Please enter a master username', 'error');
-  if (passphrase.length < 8) return showToast('Master passphrase must be at least 8 characters', 'error');
-  if (!verifyCode || verifyCode.length !== 6) return showToast('Please enter the 6-digit code from Google Authenticator', 'error');
-
-  const isValid = await verifyTOTP(pendingSetupSecret, verifyCode);
-  if (!isValid) {
-    return showToast('Invalid code! Check Google Authenticator and try again.', 'error');
-  }
-
-  const passHash = await sha256(passphrase);
-
-  await db.ref('super_admin_config/auth').set({
-    username: username,
-    passphrase_hash: passHash,
-    totp_secret: pendingSetupSecret,
-    setup_completed: true,
-    failed_attempts: 0,
-    locked_until: 0,
-    created_at: new Date().toISOString()
-  });
-
-  await logAudit('SUPER_ADMIN_SETUP', `Super admin account initialized for ${username}`);
-
-  lockDownSetupPermanently();
-  showToast('Setup complete & permanently locked! Welcome.', 'success');
-  startUserSession(username);
-});
-
-// Login submit handler
-document.getElementById('btnLogin')?.addEventListener('click', async () => {
-  const username = document.getElementById('loginUsername')?.value?.trim() || 'superadmin';
-  showToast('Welcome Super Admin! Session started.', 'success');
-  startUserSession(username);
-});
-
-function openTotpQrModal() {
-  document.getElementById('modalTotpQr')?.classList.remove('hidden');
-}
-
-function closeTotpQrModal() {
-  document.getElementById('modalTotpQr')?.classList.add('hidden');
-}
+// 32-Character / 32-Bit Master Secret Key (Known strictly to Super Admin)
+const MASTER_SECRET_KEY = "HMMS-SUPER-ADMIN-KEY-2026-X9Y8Z7";
 
 function togglePasswordVisibility() {
-  const input = document.getElementById('loginPassword');
+  const input = document.getElementById('loginSecretKey');
   const icon = document.getElementById('eyeIcon');
   if (!input) return;
   if (input.type === 'password') {
@@ -266,27 +53,63 @@ function togglePasswordVisibility() {
   }
 }
 
-document.getElementById('loginTotp')?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    document.getElementById('btnLogin')?.click();
-  }
-});
+async function handleSuperAdminLogin() {
+  const nameInput = document.getElementById('loginUsername');
+  const keyInput = document.getElementById('loginSecretKey');
+  const username = (nameInput?.value || '').trim();
+  const secretKey = (keyInput?.value || '').trim();
 
-document.getElementById('btnSwitchToSetup')?.addEventListener('click', () => {
-  if (isSetupPermanentlyLocked) {
-    showToast('Setup is already permanently completed and locked.', 'error');
+  if (!username) {
+    showToast('Please enter your Super Admin name', 'error');
+    nameInput?.focus();
     return;
   }
-  initSetupMode();
-});
+
+  if (!secretKey) {
+    showToast('Please enter the 32-bit Secret Key', 'error');
+    keyInput?.focus();
+    return;
+  }
+
+  if (secretKey !== MASTER_SECRET_KEY) {
+    showToast('Invalid Secret Key! Access Denied.', 'error');
+    keyInput?.focus();
+    return;
+  }
+
+  sessionStorage.setItem('sa_active_user', username);
+  showToast(`Welcome ${username}! Super Admin authenticated.`, 'success');
+  startUserSession(username);
+}
+
+function checkAuthStatus() {
+  const activeUser = sessionStorage.getItem('sa_active_user');
+  if (activeUser) {
+    startUserSession(activeUser);
+  } else {
+    showAuthScreen();
+  }
+}
+
+function showAuthScreen() {
+  document.getElementById('mainDashboard')?.classList.add('hidden');
+  const authScreen = document.getElementById('authScreen');
+  if (authScreen) {
+    authScreen.classList.remove('hidden');
+  }
+  const keyInput = document.getElementById('loginSecretKey');
+  if (keyInput) keyInput.value = '';
+}
 
 // ==================== SESSION & TIMEOUT ====================
 
 function startUserSession(username) {
   currentSessionUser = username;
-  document.getElementById('currentSuperAdminUser').innerText = username;
-  document.getElementById('authScreen').classList.add('hidden');
-  document.getElementById('mainDashboard').classList.remove('hidden');
+  const userDisplay = document.getElementById('currentSuperAdminUser');
+  if (userDisplay) userDisplay.innerText = username;
+
+  document.getElementById('authScreen')?.classList.add('hidden');
+  document.getElementById('mainDashboard')?.classList.remove('hidden');
 
   resetSessionTimer();
   window.addEventListener('mousemove', resetSessionTimer);
@@ -323,11 +146,9 @@ function handleSessionTimeout() {
 
 function logout() {
   if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+  sessionStorage.removeItem('sa_active_user');
   currentSessionUser = null;
-  document.getElementById('mainDashboard').classList.add('hidden');
-  document.getElementById('authScreen').classList.remove('hidden');
-  document.getElementById('loginPassword').value = '';
-  document.getElementById('loginTotp').value = '';
+  showAuthScreen();
   showToast('Logged out securely.', 'info');
 }
 
