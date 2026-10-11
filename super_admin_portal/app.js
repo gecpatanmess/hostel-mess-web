@@ -349,6 +349,7 @@ const defaultRolesSeed = {
       can_attendance_edit: true,
       can_students_manage: true,
       can_complaints: true,
+      can_manage_complaint_window: true,
       can_notices: true
     }
   },
@@ -363,6 +364,7 @@ const defaultRolesSeed = {
       can_attendance_edit: true,
       can_students_manage: true,
       can_complaints: true,
+      can_manage_complaint_window: true,
       can_notices: true
     }
   },
@@ -377,6 +379,7 @@ const defaultRolesSeed = {
       can_attendance_edit: false,
       can_students_manage: false,
       can_complaints: true,
+      can_manage_complaint_window: false,
       can_notices: true
     }
   },
@@ -391,6 +394,7 @@ const defaultRolesSeed = {
       can_attendance_edit: false,
       can_students_manage: false,
       can_complaints: true,
+      can_manage_complaint_window: true,
       can_notices: true
     }
   }
@@ -471,6 +475,7 @@ const permissionLabels = {
   can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square" },
   can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate" },
   can_complaints: { label: "Complaints Access (View Complaints)", icon: "fa-triangle-exclamation" },
+  can_manage_complaint_window: { label: "Complaint Schedule & Window (Open/Close Dates)", icon: "fa-calendar-check" },
   can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn" }
 };
 
@@ -483,6 +488,7 @@ const defaultStandardPerms = {
   can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square", checked: false },
   can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate", checked: false },
   can_complaints: { label: "Complaints Access (View Complaints)", icon: "fa-triangle-exclamation", checked: true },
+  can_manage_complaint_window: { label: "Complaint Schedule & Window (Open/Close Dates)", icon: "fa-calendar-check", checked: false },
   can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn", checked: true }
 };
 

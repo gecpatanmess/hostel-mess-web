@@ -701,6 +701,62 @@ class ComplaintItem {
   ]);
 }
 
+class ComplaintWindowConfig {
+  final bool isOpen;
+  final String mode; // 'toggle' or 'dates'
+  final String? startDate; // 'YYYY-MM-DD'
+  final String? endDate; // 'YYYY-MM-DD'
+  final int maxPerMonth;
+  final String? noticeMessage;
+
+  ComplaintWindowConfig({
+    this.isOpen = true,
+    this.mode = 'toggle',
+    this.startDate,
+    this.endDate,
+    this.maxPerMonth = 2,
+    this.noticeMessage,
+  });
+
+  bool isCurrentlyOpen() {
+    if (mode == 'dates' && startDate != null && endDate != null && startDate!.isNotEmpty && endDate!.isNotEmpty) {
+      try {
+        final now = realTime;
+        final todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        return todayStr.compareTo(startDate!) >= 0 && todayStr.compareTo(endDate!) <= 0;
+      } catch (e) {
+        return isOpen;
+      }
+    }
+    return isOpen;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'isOpen': isOpen,
+      'mode': mode,
+      'startDate': startDate,
+      'endDate': endDate,
+      'maxPerMonth': maxPerMonth,
+      'noticeMessage': noticeMessage,
+    };
+  }
+
+  factory ComplaintWindowConfig.fromJson(Map<dynamic, dynamic>? json) {
+    if (json == null) return ComplaintWindowConfig();
+    return ComplaintWindowConfig(
+      isOpen: json['isOpen'] == true,
+      mode: (json['mode'] ?? 'toggle').toString(),
+      startDate: json['startDate']?.toString(),
+      endDate: json['endDate']?.toString(),
+      maxPerMonth: int.tryParse(json['maxPerMonth']?.toString() ?? '2') ?? 2,
+      noticeMessage: json['noticeMessage']?.toString(),
+    );
+  }
+}
+
+ComplaintWindowConfig globalComplaintWindowConfig = ComplaintWindowConfig(isOpen: true, maxPerMonth: 2);
+
 List<ComplaintItem> globalComplaints = [];
 Set<String> globalStudentHiddenComplaints = {};
 Set<String> globalStudentHiddenNotices = {};
@@ -868,6 +924,7 @@ Map<String, RoleDefinition> globalRoles = {
       'can_attendance_edit': true,
       'can_students_manage': true,
       'can_complaints': true,
+      'can_manage_complaint_window': true,
       'can_notices': true,
       'can_manage_admins': true,
     },
@@ -884,6 +941,7 @@ Map<String, RoleDefinition> globalRoles = {
       'can_attendance_edit': true,
       'can_students_manage': true,
       'can_complaints': true,
+      'can_manage_complaint_window': true,
       'can_notices': true,
       'can_manage_admins': true,
     },
@@ -900,6 +958,7 @@ Map<String, RoleDefinition> globalRoles = {
       'can_attendance_edit': false,
       'can_students_manage': false,
       'can_complaints': true,
+      'can_manage_complaint_window': false,
       'can_notices': true,
       'can_manage_admins': false,
     },
@@ -916,6 +975,7 @@ Map<String, RoleDefinition> globalRoles = {
       'can_attendance_edit': false,
       'can_students_manage': false,
       'can_complaints': true,
+      'can_manage_complaint_window': true,
       'can_notices': true,
       'can_manage_admins': false,
     },
@@ -1409,6 +1469,7 @@ class SyncService {
     globalEntryL = false;
     globalEntryD = false;
     _switchCooldown = false;
+    globalComplaintWindowConfig = ComplaintWindowConfig(isOpen: true, maxPerMonth: 2);
     await _firebaseSub?.cancel();
     await _supaMenuSub?.cancel();
     await _supaNoticesSub?.cancel();
@@ -1417,6 +1478,16 @@ class SyncService {
     listen();
     globalSyncTrigger.value++; // Force UI refresh immediately on toggle
     await fetchNow();
+  }
+
+  static Future<void> saveComplaintWindowConfig(ComplaintWindowConfig config) async {
+    try {
+      await _dbRef.child('complaint_window').set(config.toJson());
+      globalComplaintWindowConfig = config;
+      globalSyncTrigger.value++;
+    } catch (e) {
+      print("Save complaint window error: $e");
+    }
   }
 
   static Map<String, DynamicPoll> dynamicPolls = {};
@@ -1632,6 +1703,11 @@ class SyncService {
               if (st.isValid) globalRegisteredStudents.add(st);
             }
           }
+        }
+        if (data['complaint_window'] != null) {
+          globalComplaintWindowConfig = ComplaintWindowConfig.fromJson(
+            Map<dynamic, dynamic>.from(data['complaint_window']),
+          );
         }
         await saveRegisteredStudents();
         _hasDownloadedOnce = true;
@@ -2156,6 +2232,11 @@ class SyncService {
               if (st.isValid) globalRegisteredStudents.add(st);
             }
           }
+        }
+        if (data['complaint_window'] != null) {
+          globalComplaintWindowConfig = ComplaintWindowConfig.fromJson(
+            Map<dynamic, dynamic>.from(data['complaint_window']),
+          );
         }
         await saveRegisteredStudents();
         final prefs = await SharedPreferences.getInstance();
@@ -8899,6 +8980,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             MaterialPageRoute(
                               builder: (context) => AdminComplaintsScreen(
                                 hidden: globalAdminHiddenComplaints,
+                                adminPhone: widget.phone,
                                 onDelete: (id) async {
                                   await SyncService.deleteComplaint(id);
                                 },
@@ -9083,6 +9165,77 @@ class StudentComplaintsScreen extends StatefulWidget {
 }
 
 class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
+  void _tryOpenAddComplaint() {
+    final isPortalOpen = globalComplaintWindowConfig.isCurrentlyOpen();
+    if (!isPortalOpen) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: const [
+              Icon(Icons.lock, color: Colors.orange),
+              SizedBox(width: 8),
+              Text("Portal Closed", style: TextStyle(color: brandDark, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            (globalComplaintWindowConfig.noticeMessage != null && globalComplaintWindowConfig.noticeMessage!.isNotEmpty)
+                ? globalComplaintWindowConfig.noticeMessage!
+                : (globalComplaintWindowConfig.mode == 'dates' && globalComplaintWindowConfig.startDate != null
+                    ? "Complaints are only accepted between ${globalComplaintWindowConfig.startDate} and ${globalComplaintWindowConfig.endDate}."
+                    : "Complaints portal is currently closed by the Admin. Please wait for the next scheduled date."),
+            style: const TextStyle(color: brandDark),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK", style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final now = realTime;
+    final currentMonthCount = globalComplaints.where((c) =>
+      c.studentName == widget.name &&
+      c.date.year == now.year &&
+      c.date.month == now.month
+    ).length;
+
+    final maxLimit = globalComplaintWindowConfig.maxPerMonth;
+    if (currentMonthCount >= maxLimit) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+              SizedBox(width: 8),
+              Text("Monthly Limit Reached", style: TextStyle(color: brandDark, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text(
+            "You have reached your limit of $maxLimit complaints for this month (${now.month}/${now.year}).\n\nYou will be able to submit new complaints on the 1st of next month.",
+            style: const TextStyle(color: brandDark),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("OK", style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    _showAddDialog();
+  }
+
   void _showAddDialog() {
     final titleCtrl = TextEditingController();
     final msgCtrl = TextEditingController();
@@ -9189,6 +9342,22 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                 ),
                 onPressed: () async {
                   if (titleCtrl.text.isNotEmpty && msgCtrl.text.isNotEmpty) {
+                    final now = realTime;
+                    final currentMonthCount = globalComplaints.where((c) =>
+                      c.studentName == widget.name &&
+                      c.date.year == now.year &&
+                      c.date.month == now.month
+                    ).length;
+                    if (currentMonthCount >= globalComplaintWindowConfig.maxPerMonth) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Monthly limit of ${globalComplaintWindowConfig.maxPerMonth} complaints reached."),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
                     setState(() {
                       globalComplaints.insert(
                         0,
@@ -9236,6 +9405,16 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
       body: ValueListenableBuilder(
         valueListenable: globalSyncTrigger,
         builder: (context, _, __) {
+          final isPortalOpen = globalComplaintWindowConfig.isCurrentlyOpen();
+          final now = realTime;
+          final currentMonthCount = globalComplaints.where((c) =>
+            c.studentName == widget.name &&
+            c.date.year == now.year &&
+            c.date.month == now.month
+          ).length;
+          final maxLimit = globalComplaintWindowConfig.maxPerMonth;
+          final isLimitReached = currentMonthCount >= maxLimit;
+
           final myComplaints = globalComplaints
               .where(
                 (c) =>
@@ -9243,89 +9422,176 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                     !globalStudentHiddenComplaints.contains(c.id),
               )
               .toList();
-          return myComplaints.isEmpty
-              ? const Center(
-                  child: Text(
-                    "No complaints yet.",
-                    style: TextStyle(color: brandGray),
+          return Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: !isPortalOpen
+                      ? const Color(0xFFFFF3E0)
+                      : (isLimitReached ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9)),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: !isPortalOpen
+                        ? Colors.orange.shade300
+                        : (isLimitReached ? Colors.red.shade300 : Colors.green.shade300),
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: myComplaints.length,
-                  itemBuilder: (context, index) {
-                    final c = myComplaints[index];
-                    return Card(
-                      color: Colors.white,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      elevation: 0,
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        title: Text(
-                          c.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: brandDark,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              c.description,
-                              style: const TextStyle(color: brandGray),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      !isPortalOpen
+                          ? Icons.lock
+                          : (isLimitReached ? Icons.error_outline : Icons.check_circle_outline),
+                      color: !isPortalOpen
+                          ? Colors.orange.shade800
+                          : (isLimitReached ? Colors.red.shade700 : Colors.green.shade700),
+                      size: 22,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            !isPortalOpen
+                                ? "Complaint Portal Closed"
+                                : (isLimitReached
+                                    ? "Monthly Limit Reached ($currentMonthCount/$maxLimit)"
+                                    : "Complaints This Month: $currentMonthCount / $maxLimit"),
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: !isPortalOpen
+                                  ? Colors.orange.shade900
+                                  : (isLimitReached ? Colors.red.shade900 : Colors.green.shade900),
                             ),
-                            if (c.complaintImageUrl != null &&
-                                c.complaintImageUrl!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Image.network(
-                                c.complaintImageUrl!,
-                                height: 150,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Icon(
-                                      Icons.broken_image,
-                                      color: brandGray,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            !isPortalOpen
+                                ? ((globalComplaintWindowConfig.noticeMessage != null && globalComplaintWindowConfig.noticeMessage!.isNotEmpty)
+                                    ? globalComplaintWindowConfig.noticeMessage!
+                                    : (globalComplaintWindowConfig.mode == 'dates' && globalComplaintWindowConfig.startDate != null
+                                        ? "Allowed: ${globalComplaintWindowConfig.startDate} to ${globalComplaintWindowConfig.endDate}"
+                                        : "Complaints are currently closed by admin."))
+                                : (isLimitReached
+                                    ? "Limit resets on 1st of next month."
+                                    : "${maxLimit - currentMonthCount} complaints remaining for this month."),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: !isPortalOpen
+                                  ? Colors.orange.shade800
+                                  : (isLimitReached ? Colors.red.shade800 : Colors.green.shade800),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: myComplaints.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "No complaints yet.",
+                          style: TextStyle(color: brandGray),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: myComplaints.length,
+                        itemBuilder: (context, index) {
+                          final c = myComplaints[index];
+                          return Card(
+                            color: Colors.white,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              title: Text(
+                                c.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: brandDark,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    c.description,
+                                    style: const TextStyle(color: brandGray),
+                                  ),
+                                  if (c.complaintImageUrl != null &&
+                                      c.complaintImageUrl!.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Image.network(
+                                      c.complaintImageUrl!,
+                                      height: 150,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) =>
+                                          const Icon(
+                                            Icons.broken_image,
+                                            color: brandGray,
+                                          ),
                                     ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    formatDateTime(c.date),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: brandGreen,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                            const SizedBox(height: 8),
-                            Text(
-                              formatDateTime(c.date),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: brandGreen,
-                                fontWeight: FontWeight.w600,
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () {
+                                  setState(
+                                    () => globalStudentHiddenComplaints.add(c.id),
+                                  );
+                                  saveStudentHiddenComplaints();
+                                },
                               ),
                             ),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.redAccent,
-                          ),
-                          onPressed: () {
-                            setState(
-                              () => globalStudentHiddenComplaints.add(c.id),
-                            );
-                            saveStudentHiddenComplaints();
-                          },
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                );
+              ),
+            ],
+          );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddDialog,
-        backgroundColor: brandGreen,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: ValueListenableBuilder(
+        valueListenable: globalSyncTrigger,
+        builder: (context, _, __) {
+          final isPortalOpen = globalComplaintWindowConfig.isCurrentlyOpen();
+          final now = realTime;
+          final currentMonthCount = globalComplaints.where((c) =>
+            c.studentName == widget.name &&
+            c.date.year == now.year &&
+            c.date.month == now.month
+          ).length;
+          final isLimitReached = currentMonthCount >= globalComplaintWindowConfig.maxPerMonth;
+          return FloatingActionButton(
+            onPressed: _tryOpenAddComplaint,
+            backgroundColor: (!isPortalOpen || isLimitReached) ? Colors.grey : brandGreen,
+            child: Icon((!isPortalOpen) ? Icons.lock : Icons.add, color: Colors.white),
+          );
+        },
       ),
     );
   }
@@ -9334,137 +9600,411 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
 class AdminComplaintsScreen extends StatefulWidget {
   final Set<String> hidden;
   final Function(String) onDelete;
+  final String? adminPhone;
   const AdminComplaintsScreen({
     super.key,
     required this.hidden,
     required this.onDelete,
+    this.adminPhone,
   });
   @override
   State<AdminComplaintsScreen> createState() => _AdminComplaintsScreenState();
 }
 
 class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
+  void _showScheduleDialog() {
+    bool currentIsOpen = globalComplaintWindowConfig.isOpen;
+    String currentMode = globalComplaintWindowConfig.mode; // 'toggle' or 'dates'
+    String? currentStartDate = globalComplaintWindowConfig.startDate;
+    String? currentEndDate = globalComplaintWindowConfig.endDate;
+    int currentMax = globalComplaintWindowConfig.maxPerMonth;
+    final noticeCtrl = TextEditingController(text: globalComplaintWindowConfig.noticeMessage ?? '');
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Row(
+              children: [
+                const Icon(Icons.tune, color: brandGreen),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Complaint Window (${globalHostelMode.toUpperCase()})",
+                    style: const TextStyle(color: brandDark, fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Control Mode:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                  RadioListTile<String>(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Manual ON/OFF Switch", style: TextStyle(fontSize: 13)),
+                    value: 'toggle',
+                    groupValue: currentMode,
+                    activeColor: brandGreen,
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => currentMode = val);
+                    },
+                  ),
+                  RadioListTile<String>(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Scheduled Date Range", style: TextStyle(fontSize: 13)),
+                    value: 'dates',
+                    groupValue: currentMode,
+                    activeColor: brandGreen,
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => currentMode = val);
+                    },
+                  ),
+                  const Divider(),
+                  if (currentMode == 'toggle') ...[
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Accept Complaints", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      subtitle: Text(
+                        currentIsOpen ? "Students can submit complaints" : "Portal is closed for students",
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      value: currentIsOpen,
+                      activeColor: brandGreen,
+                      onChanged: (val) {
+                        setDialogState(() => currentIsOpen = val);
+                      },
+                    ),
+                  ] else ...[
+                    const Text("Active Dates:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: currentStartDate != null ? (DateTime.tryParse(currentStartDate!) ?? DateTime.now()) : DateTime.now(),
+                                firstDate: DateTime(2025),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  currentStartDate = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                                });
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: Text(
+                              currentStartDate != null ? "From: $currentStartDate" : "Pick Start Date",
+                              style: const TextStyle(fontSize: 11, color: brandDark),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: currentEndDate != null ? (DateTime.tryParse(currentEndDate!) ?? DateTime.now()) : DateTime.now(),
+                                firstDate: DateTime(2025),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  currentEndDate = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                                });
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: Text(
+                              currentEndDate != null ? "To: $currentEndDate" : "Pick End Date",
+                              style: const TextStyle(fontSize: 11, color: brandDark),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  const Text("Monthly Limit per Student:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<int>(
+                    value: currentMax,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: brandInputBg,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                    items: [1, 2, 3, 4, 5, 10].map((v) => DropdownMenuItem(
+                      value: v,
+                      child: Text("$v complaints / month"),
+                    )).toList(),
+                    onChanged: (val) {
+                      if (val != null) setDialogState(() => currentMax = val);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text("Notice Message for Students (Optional):", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: noticeCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      hintText: "e.g. Complaints window is open from 15th to 17th Oct.",
+                      hintStyle: const TextStyle(fontSize: 12),
+                      filled: true,
+                      fillColor: brandInputBg,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text("Cancel", style: TextStyle(color: brandGray)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: brandGreen,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () async {
+                  final newCfg = ComplaintWindowConfig(
+                    isOpen: currentIsOpen,
+                    mode: currentMode,
+                    startDate: currentStartDate,
+                    endDate: currentEndDate,
+                    maxPerMonth: currentMax,
+                    noticeMessage: noticeCtrl.text.trim().isEmpty ? null : noticeCtrl.text.trim(),
+                  );
+                  await SyncService.saveComplaintWindowConfig(newCfg);
+                  Navigator.pop(dialogCtx);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text("Complaint settings updated for ${globalHostelMode.toUpperCase()}!"),
+                        backgroundColor: brandGreen,
+                      ),
+                    );
+                  }
+                },
+                child: const Text("Save Settings", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final visible = globalComplaints
-        .where((c) => !widget.hidden.contains(c.id))
-        .toList();
+    final canManage = widget.adminPhone == null ||
+        checkAdminPermission(widget.adminPhone!, 'can_manage_complaint_window');
+
     return Scaffold(
       backgroundColor: brandBg,
       appBar: AppBar(
         title: const Text("Student Complaints"),
         backgroundColor: brandGreen,
         foregroundColor: Colors.white,
+        actions: [
+          if (canManage)
+            IconButton(
+              icon: const Icon(Icons.tune),
+              tooltip: "Complaint Window & Schedule",
+              onPressed: _showScheduleDialog,
+            ),
+        ],
       ),
       body: ValueListenableBuilder(
         valueListenable: globalSyncTrigger,
         builder: (context, _, __) {
+          final isPortalOpen = globalComplaintWindowConfig.isCurrentlyOpen();
           final visible = globalComplaints
               .where((c) => !widget.hidden.contains(c.id))
               .toList();
-          return visible.isEmpty
-              ? const Center(
-                  child: Text(
-                    "No complaints yet.",
-                    style: TextStyle(color: brandGray),
+
+          return Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isPortalOpen ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isPortalOpen ? Colors.green.shade300 : Colors.orange.shade300,
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: visible.length,
-                  itemBuilder: (context, index) {
-                    final c = visible[index];
-                    return Card(
-                      color: Colors.white,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      isPortalOpen ? Icons.check_circle : Icons.lock,
+                      size: 20,
+                      color: isPortalOpen ? Colors.green.shade700 : Colors.orange.shade800,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Portal: ${isPortalOpen ? 'OPEN' : 'CLOSED'} (${globalHostelMode.toUpperCase()})",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: isPortalOpen ? Colors.green.shade900 : Colors.orange.shade900,
+                            ),
+                          ),
+                          Text(
+                            globalComplaintWindowConfig.mode == 'dates' && globalComplaintWindowConfig.startDate != null
+                                ? "Dates: ${globalComplaintWindowConfig.startDate} to ${globalComplaintWindowConfig.endDate} (Max: ${globalComplaintWindowConfig.maxPerMonth}/mo)"
+                                : "Mode: Manual Switch (Max: ${globalComplaintWindowConfig.maxPerMonth}/student/mo)",
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isPortalOpen ? Colors.green.shade800 : Colors.orange.shade800,
+                            ),
+                          ),
+                        ],
                       ),
-                      elevation: 0,
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
-                        leading: CircleAvatar(
-                          child:
-                              (c.studentPhotoUrl != null &&
-                                  c.studentPhotoUrl!.isNotEmpty)
-                              ? ClipOval(
-                                  child: Image.network(
-                                    c.studentPhotoUrl!,
-                                    fit: BoxFit.cover,
-                                    width: 120,
-                                    height: 120,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const Icon(
-                                              Icons.person,
-                                              color: Colors.white,
-                                            ),
+                    ),
+                    if (canManage)
+                      TextButton(
+                        onPressed: _showScheduleDialog,
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text("Edit", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: visible.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "No complaints yet.",
+                          style: TextStyle(color: brandGray),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: visible.length,
+                        itemBuilder: (context, index) {
+                          final c = visible[index];
+                          return Card(
+                            color: Colors.white,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            elevation: 0,
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.all(16),
+                              leading: CircleAvatar(
+                                child: (c.studentPhotoUrl != null &&
+                                        c.studentPhotoUrl!.isNotEmpty)
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          c.studentPhotoUrl!,
+                                          fit: BoxFit.cover,
+                                          width: 120,
+                                          height: 120,
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              const Icon(
+                                                Icons.person,
+                                                color: Colors.white,
+                                              ),
+                                        ),
+                                      )
+                                    : const Icon(Icons.person, color: Colors.white),
+                              ),
+                              title: Text(
+                                c.title,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: brandDark,
+                                ),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    c.description,
+                                    style: const TextStyle(color: brandDark),
                                   ),
-                                )
-                              : const Icon(Icons.person, color: Colors.white),
-                        ),
-                        title: Text(
-                          c.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: brandDark,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              c.description,
-                              style: const TextStyle(color: brandDark),
-                            ),
-                            if (c.complaintImageUrl != null &&
-                                c.complaintImageUrl!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Image.network(
-                                c.complaintImageUrl!,
-                                height: 150,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    const Icon(
-                                      Icons.broken_image,
-                                      color: brandGray,
+                                  if (c.complaintImageUrl != null &&
+                                      c.complaintImageUrl!.isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    Image.network(
+                                      c.complaintImageUrl!,
+                                      height: 150,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) =>
+                                          const Icon(
+                                            Icons.broken_image,
+                                            color: brandGray,
+                                          ),
                                     ),
+                                  ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    "By: ${c.studentName} (Room ${c.studentRoom})",
+                                    style: const TextStyle(
+                                      color: brandGray,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    formatDateTime(c.date),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: brandGreen,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                            const SizedBox(height: 6),
-                            Text(
-                              "By: ${c.studentName} (Room ${c.studentRoom})",
-                              style: const TextStyle(
-                                color: brandGray,
-                                fontWeight: FontWeight.w500,
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () {
+                                  widget.onDelete(c.id);
+                                  setState(() {});
+                                },
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              formatDateTime(c.date),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: brandGreen,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.redAccent,
-                          ),
-                          onPressed: () {
-                            widget.onDelete(c.id);
-                            setState(() {});
-                          },
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                );
+              ),
+            ],
+          );
         },
       ),
     );
