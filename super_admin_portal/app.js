@@ -26,6 +26,7 @@ let activeTab = 'tabOverview';
 let cachedRoles = {};
 let cachedAdmins = { boys: [], girls: [] };
 let cachedStudents = { boys: [], girls: [] };
+let cachedNotices = {};
 let sessionTimeoutSeconds = 900; // 15 minutes
 let sessionTimerInterval = null;
 let currentSessionUser = null;
@@ -342,12 +343,83 @@ function setScope(scope) {
     const el = document.getElementById(id);
     if (el) el.className = "px-2 sm:px-2.5 py-1 rounded-lg transition text-emerald-100 hover:text-white";
   });
+
   const activeEl = document.getElementById(scope === 'all' ? 'scopeAll' : (scope === 'boys' ? 'scopeBoys' : 'scopeGirls'));
-  if (activeEl) activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-white text-[#135B26] shadow-xs";
+  if (activeEl) {
+    if (scope === 'boys') {
+      activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-blue-600 text-white shadow-xs";
+    } else if (scope === 'girls') {
+      activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-pink-600 text-white shadow-xs";
+    } else {
+      activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-white text-[#135B26] shadow-xs";
+    }
+  }
+
+  // Update Top Bar Scope Badge
+  const headerBadge = document.getElementById('headerScopeBadge');
+  if (headerBadge) {
+    if (scope === 'boys') {
+      headerBadge.innerText = 'BOYS HOSTEL ONLY';
+      headerBadge.className = 'hidden sm:inline-block px-1.5 py-0.5 text-[9px] sm:text-[10px] uppercase font-extrabold rounded shadow-xs shrink-0 bg-blue-600 text-white border border-blue-400';
+    } else if (scope === 'girls') {
+      headerBadge.innerText = 'GIRLS HOSTEL ONLY';
+      headerBadge.className = 'hidden sm:inline-block px-1.5 py-0.5 text-[9px] sm:text-[10px] uppercase font-extrabold rounded shadow-xs shrink-0 bg-pink-600 text-white border border-pink-400';
+    } else {
+      headerBadge.innerText = 'BOTH HOSTELS';
+      headerBadge.className = 'hidden sm:inline-block px-1.5 py-0.5 text-[9px] sm:text-[10px] uppercase font-extrabold rounded shadow-xs shrink-0 bg-white/20 text-white border border-white/20';
+    }
+  }
 
   renderAdminsTable();
   updateOverviewStats();
-  showToast(`Active Scope: ${scope.toUpperCase()} HOSTELS`, 'info');
+  applyScopeToAttendance();
+  applyScopeToNotices();
+
+  const scopeLabel = scope === 'all' ? 'Both Hostels (Combined)' : `${scope.toUpperCase()} Hostel Only`;
+  showToast(`Active View: ${scopeLabel}`, 'info');
+}
+
+function applyScopeToAttendance() {
+  const container = document.getElementById('attFilterHostelContainer');
+  const hostelSelect = document.getElementById('attFilterHostel');
+  const attTitle = document.getElementById('attTitle');
+  const attSubtitle = document.getElementById('attSubtitle');
+
+  if (currentScope === 'boys') {
+    if (hostelSelect) hostelSelect.value = 'boys';
+    if (container) container.classList.add('hidden');
+    if (attTitle) attTitle.innerText = "Boys Hostel Live Attendance";
+    if (attSubtitle) attSubtitle.innerText = "Real-time attendance monitor & direct override for Boys Hostel only";
+  } else if (currentScope === 'girls') {
+    if (hostelSelect) hostelSelect.value = 'girls';
+    if (container) container.classList.add('hidden');
+    if (attTitle) attTitle.innerText = "Girls Hostel Live Attendance";
+    if (attSubtitle) attSubtitle.innerText = "Real-time attendance monitor & direct override for Girls Hostel only";
+  } else {
+    if (container) container.classList.remove('hidden');
+    if (attTitle) attTitle.innerText = "Live Attendance Manager";
+    if (attSubtitle) attSubtitle.innerText = "Real-time attendance monitor & direct Super Admin override across Hostels";
+  }
+
+  if (activeTab === 'tabAttendance') {
+    loadAttendanceRecords();
+  }
+}
+
+function applyScopeToNotices() {
+  const targetSelect = document.getElementById('noticeTarget');
+  const noticesTitle = document.getElementById('noticesFeedTitle');
+  if (currentScope === 'boys') {
+    if (targetSelect) targetSelect.value = 'boys';
+    if (noticesTitle) noticesTitle.innerText = "Boys Hostel Active Notices";
+  } else if (currentScope === 'girls') {
+    if (targetSelect) targetSelect.value = 'girls';
+    if (noticesTitle) noticesTitle.innerText = "Girls Hostel Active Notices";
+  } else {
+    if (targetSelect) targetSelect.value = 'both';
+    if (noticesTitle) noticesTitle.innerText = "Active Notices (Both Hostels)";
+  }
+  renderNoticesList(cachedNotices);
 }
 
 document.querySelectorAll('.nav-btn, .nav-tab-mobile').forEach(btn => {
@@ -406,9 +478,17 @@ function switchTab(tabId) {
   });
 
   if (tabId === 'tabAttendance') {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('attFilterDate').value = today;
-    loadAttendanceRecords();
+    const dateInput = document.getElementById('attFilterDate');
+    if (dateInput && !dateInput.value) {
+      dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    applyScopeToAttendance();
+  } else if (tabId === 'tabNotices') {
+    applyScopeToNotices();
+  } else if (tabId === 'tabAdmins') {
+    renderAdminsTable();
+  } else if (tabId === 'tabOverview') {
+    updateOverviewStats();
   }
 }
 
@@ -420,6 +500,7 @@ function initAppListeners() {
   listenToStudents();
   listenToAuditLogs();
   listenToNotices();
+  setScope(currentScope);
 }
 
 function refreshAllData() {
@@ -768,6 +849,19 @@ function renderAdminsTable() {
   if (!tbody) return;
   tbody.innerHTML = '';
 
+  const titleEl = document.getElementById('adminsTitle');
+  const subtitleEl = document.getElementById('adminsSubtitle');
+  if (currentScope === 'boys') {
+    if (titleEl) titleEl.innerText = "Boys Hostel Staff & Committee";
+    if (subtitleEl) subtitleEl.innerText = "Manage and edit roles for Boys Hostel staff and committee members";
+  } else if (currentScope === 'girls') {
+    if (titleEl) titleEl.innerText = "Girls Hostel Staff & Committee";
+    if (subtitleEl) subtitleEl.innerText = "Manage and edit roles for Girls Hostel staff and committee members";
+  } else {
+    if (titleEl) titleEl.innerText = "Staff, Admins & Committee Members";
+    if (subtitleEl) subtitleEl.innerText = "Manage, edit roles, or revoke access for Admins, Mess Committee, Wardens across Both Hostels";
+  }
+
   let list = [];
   if (currentScope === 'all') {
     list = [...cachedAdmins.boys.map(a => ({ ...a, location: 'boys' })), ...cachedAdmins.girls.map(a => ({ ...a, location: 'girls' }))];
@@ -873,6 +967,18 @@ function openAddAdminModal() {
   document.getElementById('newAdminName').value = '';
   document.getElementById('newAdminEmail').value = '';
   updateRoleDropdowns();
+
+  const scopeSelect = document.getElementById('newAdminScope');
+  if (scopeSelect) {
+    if (currentScope === 'boys') {
+      scopeSelect.value = 'boys';
+    } else if (currentScope === 'girls') {
+      scopeSelect.value = 'girls';
+    } else {
+      scopeSelect.value = 'both';
+    }
+  }
+
   document.getElementById('modalAddAdmin').classList.remove('hidden');
 }
 
@@ -1061,12 +1167,50 @@ function listenToStudents() {
 }
 
 function updateOverviewStats() {
-  document.getElementById('statBoysCount').innerText = cachedStudents.boys.length;
-  document.getElementById('statGirlsCount').innerText = cachedStudents.girls.length;
+  const cardBoys = document.getElementById('cardBoysStudents');
+  const cardGirls = document.getElementById('cardGirlsStudents');
+  const overviewGrid = document.getElementById('overviewStatsGrid');
+  const overviewSubtitle = document.getElementById('overviewSubtitle');
+  const labelStaff = document.getElementById('labelActiveStaff');
+  const sublabelStaff = document.getElementById('sublabelActiveStaff');
+  const statStaff = document.getElementById('statAdminsCount');
 
-  const totalAdmins = (cachedAdmins.boys.length + cachedAdmins.girls.length);
-  document.getElementById('statAdminsCount').innerText = totalAdmins;
-  document.getElementById('statRolesCount').innerText = Object.keys(cachedRoles).length;
+  if (document.getElementById('statBoysCount')) {
+    document.getElementById('statBoysCount').innerText = cachedStudents.boys.length;
+  }
+  if (document.getElementById('statGirlsCount')) {
+    document.getElementById('statGirlsCount').innerText = cachedStudents.girls.length;
+  }
+  if (document.getElementById('statRolesCount')) {
+    document.getElementById('statRolesCount').innerText = Object.keys(cachedRoles).length;
+  }
+
+  if (currentScope === 'boys') {
+    if (cardBoys) cardBoys.classList.remove('hidden');
+    if (cardGirls) cardGirls.classList.add('hidden');
+    if (overviewGrid) overviewGrid.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4";
+    if (overviewSubtitle) overviewSubtitle.innerText = "Real-time statistics for Boys Hostel only";
+    if (labelStaff) labelStaff.innerText = "Boys Hostel Staff";
+    if (sublabelStaff) sublabelStaff.innerText = "Boys Staff & Committee";
+    if (statStaff) statStaff.innerText = cachedAdmins.boys.length;
+  } else if (currentScope === 'girls') {
+    if (cardBoys) cardBoys.classList.add('hidden');
+    if (cardGirls) cardGirls.classList.remove('hidden');
+    if (overviewGrid) overviewGrid.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4";
+    if (overviewSubtitle) overviewSubtitle.innerText = "Real-time statistics for Girls Hostel only";
+    if (labelStaff) labelStaff.innerText = "Girls Hostel Staff";
+    if (sublabelStaff) sublabelStaff.innerText = "Girls Staff & Committee";
+    if (statStaff) statStaff.innerText = cachedAdmins.girls.length;
+  } else {
+    // Both Hostels ('all')
+    if (cardBoys) cardBoys.classList.remove('hidden');
+    if (cardGirls) cardGirls.classList.remove('hidden');
+    if (overviewGrid) overviewGrid.className = "grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4";
+    if (overviewSubtitle) overviewSubtitle.innerText = "Real-time statistics across Both Hostels (Boys & Girls)";
+    if (labelStaff) labelStaff.innerText = "Total Active Staff";
+    if (sublabelStaff) sublabelStaff.innerText = "Across Both Hostels";
+    if (statStaff) statStaff.innerText = (cachedAdmins.boys.length + cachedAdmins.girls.length);
+  }
 }
 
 // ==================== 4. LIVE ATTENDANCE VIEWER & MODIFIER ====================
@@ -1074,7 +1218,9 @@ function updateOverviewStats() {
 async function loadAttendanceRecords() {
   const date = document.getElementById('attFilterDate').value;
   const meal = document.getElementById('attFilterMeal').value;
-  const hostel = document.getElementById('attFilterHostel').value;
+  let hostel = document.getElementById('attFilterHostel')?.value || 'boys';
+  if (currentScope === 'boys') hostel = 'boys';
+  if (currentScope === 'girls') hostel = 'girls';
   const tbody = document.getElementById('attendanceTableBody');
 
   if (!date) return showToast('Please select a date', 'error');
@@ -1157,23 +1303,32 @@ async function modifyAttendanceStatus(hostel, date, room, name, meal, newStatus)
 
 function listenToNotices() {
   db.ref('super_admin_config/notices').on('value', snap => {
-    const notices = snap.val() || {};
-    renderNoticesList(notices);
+    cachedNotices = snap.val() || {};
+    renderNoticesList(cachedNotices);
   });
 }
 
 function renderNoticesList(noticesObj) {
   const container = document.getElementById('noticesListContainer');
   const countEl = document.getElementById('noticesCount');
+  if (!container) return;
   container.innerHTML = '';
 
-  const list = Object.entries(noticesObj).map(([id, n]) => ({ id, ...n }));
+  let list = Object.entries(noticesObj || {}).map(([id, n]) => ({ id, ...n }));
   list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
-  countEl.innerText = `${list.length} notices`;
+  // Filter based on currentScope
+  if (currentScope === 'boys') {
+    list = list.filter(n => n.target === 'boys' || n.target === 'both' || !n.target);
+  } else if (currentScope === 'girls') {
+    list = list.filter(n => n.target === 'girls' || n.target === 'both' || !n.target);
+  }
+
+  const scopeBadgeText = currentScope === 'all' ? 'All Hostels' : `${currentScope.toUpperCase()} Only`;
+  if (countEl) countEl.innerText = `${list.length} notices (${scopeBadgeText})`;
 
   if (list.length === 0) {
-    container.innerHTML = `<div class="text-xs text-[#64748B] italic p-6 text-center">No notices published yet.</div>`;
+    container.innerHTML = `<div class="text-xs text-[#64748B] italic p-6 text-center">No notices published for ${currentScope === 'all' ? 'any hostel' : currentScope + ' hostel'} yet.</div>`;
     return;
   }
 
