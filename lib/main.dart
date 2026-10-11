@@ -862,6 +862,8 @@ Map<String, RoleDefinition> globalRoles = {
     permissions: {
       'can_manage_polls': true,
       'can_manage_meals': true,
+      'can_set_menu': true,
+      'can_edit_timetable': true,
       'can_attendance': true,
       'can_attendance_edit': true,
       'can_students_manage': true,
@@ -876,6 +878,8 @@ Map<String, RoleDefinition> globalRoles = {
     permissions: {
       'can_manage_polls': true,
       'can_manage_meals': true,
+      'can_set_menu': true,
+      'can_edit_timetable': true,
       'can_attendance': true,
       'can_attendance_edit': true,
       'can_students_manage': true,
@@ -890,6 +894,8 @@ Map<String, RoleDefinition> globalRoles = {
     permissions: {
       'can_manage_polls': true,
       'can_manage_meals': false,
+      'can_set_menu': false,
+      'can_edit_timetable': false,
       'can_attendance': false,
       'can_attendance_edit': false,
       'can_students_manage': false,
@@ -904,6 +910,8 @@ Map<String, RoleDefinition> globalRoles = {
     permissions: {
       'can_manage_polls': false,
       'can_manage_meals': false,
+      'can_set_menu': false,
+      'can_edit_timetable': false,
       'can_attendance': true,
       'can_attendance_edit': false,
       'can_students_manage': false,
@@ -986,6 +994,15 @@ bool checkAdminPermission(String phone, String permKey) {
   final roleDef = globalRoles[admin.role];
   if (roleDef != null && roleDef.permissions.containsKey(permKey)) {
     return roleDef.permissions[permKey] == true;
+  }
+  // Fallback if role in DB has not yet been saved with split menu/timetable keys:
+  if (permKey == 'can_set_menu' || permKey == 'can_edit_timetable') {
+    if (admin.customPermissions != null && admin.customPermissions!.containsKey('can_manage_meals')) {
+      return admin.customPermissions!['can_manage_meals'] == true;
+    }
+    if (roleDef != null && roleDef.permissions.containsKey('can_manage_meals')) {
+      return roleDef.permissions['can_manage_meals'] == true;
+    }
   }
   if (admin.role == 'super_admin' || admin.role == 'admin') return true;
   return false;
@@ -8722,7 +8739,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       );
                     },
                   ),
-                if (checkAdminPermission(widget.phone, 'can_manage_meals'))
+                if (checkAdminPermission(widget.phone, 'can_set_menu'))
                   ListTile(
                     leading: const Icon(Icons.set_meal, color: brandDark),
                     title: const Text(
@@ -8734,7 +8751,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       _showSetMenuDialog();
                     },
                   ),
-                if (checkAdminPermission(widget.phone, 'can_manage_meals'))
+                if (checkAdminPermission(widget.phone, 'can_edit_timetable'))
                   ListTile(
                     leading: const Icon(Icons.edit_calendar, color: brandDark),
                     title: const Text(

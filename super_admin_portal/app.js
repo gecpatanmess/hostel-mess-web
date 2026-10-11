@@ -519,6 +519,8 @@ const defaultRolesSeed = {
     permissions: {
       can_manage_polls: true,
       can_manage_meals: true,
+      can_set_menu: true,
+      can_edit_timetable: true,
       can_attendance: true,
       can_attendance_edit: true,
       can_students_manage: true,
@@ -532,6 +534,8 @@ const defaultRolesSeed = {
     permissions: {
       can_manage_polls: true,
       can_manage_meals: true,
+      can_set_menu: true,
+      can_edit_timetable: true,
       can_attendance: true,
       can_attendance_edit: true,
       can_students_manage: true,
@@ -545,6 +549,8 @@ const defaultRolesSeed = {
     permissions: {
       can_manage_polls: true,
       can_manage_meals: false,
+      can_set_menu: false,
+      can_edit_timetable: false,
       can_attendance: false,
       can_attendance_edit: false,
       can_students_manage: false,
@@ -558,6 +564,8 @@ const defaultRolesSeed = {
     permissions: {
       can_manage_polls: false,
       can_manage_meals: false,
+      can_set_menu: false,
+      can_edit_timetable: false,
       can_attendance: true,
       can_attendance_edit: false,
       can_students_manage: false,
@@ -605,7 +613,9 @@ function listenToRoles() {
 
 const permissionLabels = {
   can_manage_polls: { label: "Mess Polls (Create/Vote/View Results)", icon: "fa-poll" },
-  can_manage_meals: { label: "Meal Management (Meal Switches & Menus)", icon: "fa-utensils" },
+  can_manage_meals: { label: "Mess Entry (Lunch / Dinner Switches)", icon: "fa-utensils" },
+  can_set_menu: { label: "Set Menu (Today)", icon: "fa-bowl-rice" },
+  can_edit_timetable: { label: "Edit Weekly Timetable", icon: "fa-calendar-days" },
   can_attendance: { label: "View Attendance (View Monthly Sheets)", icon: "fa-calendar-check" },
   can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square" },
   can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate" },
@@ -616,7 +626,9 @@ const permissionLabels = {
 
 const defaultStandardPerms = {
   can_manage_polls: { label: "Mess Polls (Create/Vote/View Results)", icon: "fa-poll", checked: true },
-  can_manage_meals: { label: "Meal Management (Meal Switches & Menus)", icon: "fa-utensils", checked: true },
+  can_manage_meals: { label: "Mess Entry (Lunch / Dinner Switches)", icon: "fa-utensils", checked: true },
+  can_set_menu: { label: "Set Menu (Today)", icon: "fa-bowl-rice", checked: true },
+  can_edit_timetable: { label: "Edit Weekly Timetable", icon: "fa-calendar-days", checked: true },
   can_attendance: { label: "View Attendance (View Monthly Sheets)", icon: "fa-calendar-check", checked: false },
   can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square", checked: false },
   can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate", checked: false },

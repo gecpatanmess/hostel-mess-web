@@ -33480,12 +33480,14 @@ m=s.i(a,"role")
 m=J.ad(m==null?"admin":m)
 l=s.i(a,"hostelScope")
 return new A.mh(r,q,p,o,n,m,J.ad(l==null?"both":l),j.a,J.d(s.i(a,"isVerified"),!0))},
-kv(a,b){var s,r,q=B.k.be(a),p=null
-try{p=B.e.kG($.h6(),new A.boZ(q))}catch(s){p=null}if(p==null)return!1
-if(p.w!=null&&p.w.p(0,b))return p.w.i(0,b)===!0
-r=$.md().i(0,p.f)
-if(r!=null&&r.c.p(0,b))return r.c.i(0,b)===!0
-if(p.f==="super_admin"||p.f==="admin")return!0
+kv(a,b){var s,r,q,p="can_manage_meals",o=B.k.be(a),n=null
+try{n=B.e.kG($.h6(),new A.boZ(o))}catch(s){n=null}if(n==null)return!1
+if(n.w!=null&&n.w.p(0,b))return n.w.i(0,b)===!0
+r=$.md().i(0,n.f)
+q=r!=null
+if(q&&r.c.p(0,b))return r.c.i(0,b)===!0
+if(b==="can_set_menu"||b==="can_edit_timetable"){if(n.w!=null&&n.w.p(0,p))return n.w.i(0,p)===!0
+if(q&&r.c.p(0,p))return r.c.i(0,p)===!0}if(n.f==="super_admin"||n.f==="admin")return!0
 return!1},
 bpA(a){var s,r,q,p=B.k.be(a),o=null
 try{o=B.e.kG($.h6(),new A.bpB(p))}catch(s){o=null}if(o!=null){r=$.z8=B.k.be(o.r).toLowerCase()
@@ -130927,9 +130929,9 @@ q.b=new A.cf(s,n>23?59:o)
 o=this.c
 o.toString
 A.fT(r,r,!0,r,new A.b41(q,this,new A.dn(B.be,p)),o,r,!0,t.z)},
-P(a){var s,r,q,p,o,n,m=this,l=null,k="can_manage_meals",j="can_students_manage",i=A.bpA(m.a.e)
-if(i==="boys"&&$.bP!=="boys")$.ak.p3$.push(new A.b4x(m))
-else if(i==="girls"&&$.bP!=="girls")$.ak.p3$.push(new A.b4y(m))
+P(a){var s,r,q,p,o,n,m=this,l=null,k="can_students_manage",j=A.bpA(m.a.e)
+if(j==="boys"&&$.bP!=="boys")$.ak.p3$.push(new A.b4x(m))
+else if(j==="girls"&&$.bP!=="girls")$.ak.p3$.push(new A.b4y(m))
 s=t.p
 r=A.oz(A.b([A.dN(l,l,l,l,B.CK,l,l,new A.b4z(),l,l,l,"Refresh")],s),B.a_,l,!0,l,l,l,B.fJ,new A.ff(new A.b4H(m),l),new A.ff(new A.b4I(m),l))
 q=A.af(m.a.d,l,l,l,l,B.W3,l,l,l)
@@ -130939,17 +130941,17 @@ n=A.jv(B.x.bk(0.4),1)
 o=A.b6(l,A.bF(A.b([B.ac3,B.bjr,A.af("Logged in as: "+A.a0G(m.a.e),l,l,l,l,B.blq,l,l,l)],s),B.L,l,B.J,B.aT,0,l),B.I,l,l,new A.by(p,l,n,o,l,l,B.af),l,l,l,l,B.ni,l,l,l)
 p=m.a.c
 q=A.b([A.bDX(new A.aJ(B.a5m,o,l),q,A.zL(l,p!=null&&p.length!==0?A.vX(A.qL(p,new A.b4J(),B.dJ,120,120)):B.cQ,l),B.zp)],s)
-if(A.kv(m.a.e,k))q.push(A.bzK(A.b([A.aYH(B.a_,l,new A.b4K(m),B.bsh,$.nh),A.aYH(B.a_,l,new A.b4L(m),B.br8,$.ng)],s),l,l,B.aca,l,B.bsd))
+if(A.kv(m.a.e,"can_manage_meals"))q.push(A.bzK(A.b([A.aYH(B.a_,l,new A.b4K(m),B.bsh,$.nh),A.aYH(B.a_,l,new A.b4L(m),B.br8,$.ng)],s),l,l,B.aca,l,B.bsd))
 if(A.kv(m.a.e,"can_manage_polls"))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acq,l,l,new A.b4M(m,a),!1,l,l,l,l,l,l,B.bra,l,l,l))
 if(A.kv(m.a.e,"can_attendance"))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acs,l,l,new A.b4N(m,a),!1,l,l,l,l,l,l,B.brw,l,l,l))
-if(A.kv(m.a.e,j))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acv,l,l,new A.b4O(a),!1,l,l,l,l,l,l,B.brF,l,l,l))
-if(A.kv(m.a.e,k))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acJ,l,l,new A.b4A(m,a),!1,l,l,l,l,l,l,B.bqn,l,l,l))
-if(A.kv(m.a.e,k))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.abV,l,l,new A.b4B(a),!1,l,l,l,l,l,l,B.brY,l,l,l))
+if(A.kv(m.a.e,k))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acv,l,l,new A.b4O(a),!1,l,l,l,l,l,l,B.brF,l,l,l))
+if(A.kv(m.a.e,"can_set_menu"))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acJ,l,l,new A.b4A(m,a),!1,l,l,l,l,l,l,B.bqn,l,l,l))
+if(A.kv(m.a.e,"can_edit_timetable"))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.abV,l,l,new A.b4B(a),!1,l,l,l,l,l,l,B.brY,l,l,l))
 if(A.kv(m.a.e,"can_complaints"))q.push(new A.ff(new A.b4C(m),l))
 q.push(B.fC)
 q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.CJ,l,l,new A.b4D(a),!1,l,l,l,l,l,l,B.Wc,l,l,l))
 q.push(B.fC)
-if(A.kv(m.a.e,j))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acx,l,l,new A.b4E(a),!1,l,l,l,l,l,l,B.bqt,l,l,l))
+if(A.kv(m.a.e,k))q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.acx,l,l,new A.b4E(a),!1,l,l,l,l,l,l,B.bqt,l,l,l))
 q.push(A.hn(!1,l,l,l,!0,l,l,!0,l,B.CN,l,l,m.gZ8(),!1,l,l,l,l,l,l,B.Wh,l,l,l))
 q=A.bzv(A.Q_(q,B.az,l,!1))
 p=A.b([new A.cn(0,B.aF,A.cC(10,B.P.ad()>>>16&255,B.P.ad()>>>8&255,B.P.ad()&255),B.lo,15)],t.sq)
@@ -204690,8 +204692,8 @@ s($,"c4e","bIm",()=>{var q=t.N
 return A.R(["X-Client-Info",A.LU("gotrue-dart","2.27.2",null)],q,q)})
 s($,"c3X","bwB",()=>A.bN9("2024-01-01",A.qp("2024-01-01T00:00:00.0Z")))
 r($,"c22","bxB",()=>A.cV(2000,1,1,0,0,0,0))
-r($,"cb6","md",()=>{var q="can_manage_polls",p="can_manage_meals",o="can_attendance_edit",n="can_students_manage",m="can_manage_admins",l=t.N,k=t.y
-return A.R(["super_admin",A.aSF("super_admin","Super Admin",A.R([q,!0,p,!0,"can_attendance",!0,o,!0,n,!0,"can_complaints",!0,"can_notices",!0,m,!0],l,k)),"admin",A.aSF("admin","Admin",A.R([q,!0,p,!0,"can_attendance",!0,o,!0,n,!0,"can_complaints",!0,"can_notices",!0,m,!0],l,k)),"mess_committee",A.aSF("mess_committee","Mess Committee",A.R([q,!0,p,!1,"can_attendance",!1,o,!1,n,!1,"can_complaints",!0,"can_notices",!0,m,!1],l,k)),"professor",A.aSF("professor","Professor / Warden",A.R([q,!1,p,!1,"can_attendance",!0,o,!1,n,!1,"can_complaints",!0,"can_notices",!0,m,!1],l,k))],l,A.ay("SL"))})
+r($,"cb6","md",()=>{var q="can_manage_polls",p="can_manage_meals",o="can_edit_timetable",n="can_attendance_edit",m="can_students_manage",l="can_manage_admins",k=t.N,j=t.y
+return A.R(["super_admin",A.aSF("super_admin","Super Admin",A.R([q,!0,p,!0,"can_set_menu",!0,o,!0,"can_attendance",!0,n,!0,m,!0,"can_complaints",!0,"can_notices",!0,l,!0],k,j)),"admin",A.aSF("admin","Admin",A.R([q,!0,p,!0,"can_set_menu",!0,o,!0,"can_attendance",!0,n,!0,m,!0,"can_complaints",!0,"can_notices",!0,l,!0],k,j)),"mess_committee",A.aSF("mess_committee","Mess Committee",A.R([q,!0,p,!1,"can_set_menu",!1,o,!1,"can_attendance",!1,n,!1,m,!1,"can_complaints",!0,"can_notices",!0,l,!1],k,j)),"professor",A.aSF("professor","Professor / Warden",A.R([q,!1,p,!1,"can_set_menu",!1,o,!1,"can_attendance",!0,n,!1,m,!1,"can_complaints",!0,"can_notices",!0,l,!1],k,j))],k,A.ay("SL"))})
 r($,"bHq","h6",()=>A.b([A.bN_("9586401483","c984aed014aec7623a54f0591da07a85fd4b762d68a75e0ac3f3d7a45b6a1e4c",null,"","both",!1,"Admin",null,"admin")],t.yx))
 s($,"cb5","a1b",()=>A.bA8(null,t.uK))
 r($,"bHp","bxA",()=>A.cV(2000,1,1,0,0,0,0))
