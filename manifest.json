@@ -1,11 +1,11 @@
 {
-    "name": "Hostel Mess Management",
+    "name": "Hostel Mess",
     "short_name": "Hostel Mess",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#hexcode",
     "theme_color": "#hexcode",
-    "description": "Hostel Mess Attendance & Management System",
+    "description": "Hostel Mess",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
