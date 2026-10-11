@@ -31,8 +31,8 @@ Future<void> fetchAttendanceMonth(int year, int month) async {
   if (_fetchedApiMonths.contains(monthKey)) return;
   try {
     final dio = Dio();
-    dio.options.receiveTimeout = const Duration(seconds: 45);
-    dio.options.sendTimeout = const Duration(seconds: 45);
+    dio.options.receiveTimeout = const Duration(seconds: 10);
+    dio.options.sendTimeout = const Duration(seconds: 10);
     final response = await dio.get(
       '$RENDER_API_URL/attendance-history?year=$year&month=$month&mode=$globalHostelMode',
     );
@@ -1975,7 +1975,7 @@ class SyncService {
     } catch (e) {
       print("Push switches error: $e");
     }
-    Future.delayed(const Duration(seconds: 10), () {
+    Future.delayed(const Duration(milliseconds: 1500), () {
       _switchCooldown = false;
     });
   }
@@ -2138,14 +2138,8 @@ class SyncService {
       _isSyncingIn = true;
       _hasDownloadedOnce = true;
       try {
-        Map<dynamic, dynamic> rawData =
-            snap.value
-                as Map<
-                  dynamic,
-                  dynamic
-                >; // Convert to Map<String, dynamic> safely
-        Map<String, dynamic> data = jsonDecode(jsonEncode(rawData));
-        _lastHash = _computeHash(data); // update hash so we don't push it back
+        Map<dynamic, dynamic> data =
+            snap.value as Map<dynamic, dynamic>;
         if (data.containsKey('admins') && data['admins'] != null) {
           globalAdmins.clear();
           var adminsData = data['admins'];
@@ -5748,18 +5742,21 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
       _verifyStudentStillExists();
-      if (mounted)
-        setState(() {
-          _isFetchingData = true;
-        });
       DateTime now = realTime;
-      for (int m = 1; m <= now.month; m++) {
-        await fetchAttendanceMonth(now.year, m);
-      }
-      if (mounted)
+      // Fetch current month first for instantaneous load
+      await fetchAttendanceMonth(now.year, now.month);
+      if (mounted) {
         setState(() {
           _isFetchingData = false;
         });
+      }
+      // Fetch past months lazily in background without blocking UI
+      Future.microtask(() async {
+        for (int m = now.month - 1; m >= 1; m--) {
+          if (!mounted) break;
+          await fetchAttendanceMonth(now.year, m);
+        }
+      });
     });
   }
 
@@ -5777,8 +5774,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
   void _startEvictionHeartbeat() {
     _evictionPollTimer?.cancel();
-    // Fast 2-second heartbeat ensures instant auto-logout even if websocket pauses on web
-    _evictionPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    // 60-second fallback poll ensures auto-logout check without flooding Firebase under 500 users
+    _evictionPollTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       if (_isEvicting || !mounted) return;
       try {
         final snap = await FirebaseDatabase.instance
@@ -7230,18 +7227,22 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
       _verifyAdminStillExists();
-      if (mounted)
-        setState(() {
-          _isFetchingData = true;
-        });
       DateTime now = realTime;
-      for (int m = 1; m <= now.month; m++) {
-        await fetchAttendanceMonth(now.year, m);
-      }
-      if (mounted)
+      // Fetch current month first so dashboard data displays instantly
+      await fetchAttendanceMonth(now.year, now.month);
+      if (mounted) {
         setState(() {
           _isFetchingData = false;
         });
+      }
+      // Fetch past months lazily in background for dues and reports
+      Future.microtask(() async {
+        for (int m = now.month - 1; m >= 1; m--) {
+          if (!mounted) break;
+          await fetchAttendanceMonth(now.year, m);
+          if (mounted) setState(() {});
+        }
+      });
     });
   }
 
@@ -7281,7 +7282,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _startAdminEvictionHeartbeat() {
     _adminEvictionPollTimer?.cancel();
-    _adminEvictionPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    // 60-second fallback poll ensures auto-logout check without flooding Firebase under 500 users
+    _adminEvictionPollTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       if (_isEvicting || !mounted) return;
       try {
         final snap = await FirebaseDatabase.instance
@@ -7434,7 +7436,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     });
   }
 
+  List<Map<String, dynamic>>? _cachedPendingDues;
+  int _lastDuesTrigger = -1;
+
   List<Map<String, dynamic>> _getPendingDues() {
+    if (_cachedPendingDues != null && _lastDuesTrigger == globalSyncTrigger.value) {
+      return _cachedPendingDues!;
+    }
     List<Map<String, dynamic>> pendingList = [];
     List<String> months = [
       'Jan',
@@ -7512,6 +7520,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
       }
     });
+    _cachedPendingDues = pendingList;
+    _lastDuesTrigger = globalSyncTrigger.value;
     return pendingList;
   }
 
@@ -7559,10 +7569,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       setState(() => globalEntryL = v);
                       if (v == true) {
                         NotificationService.sendPushNotificationToStudents("Lunch Time", "Mess Open");
-                      } else {
-                        await _closeMessAndMarkAbsent('l');
                       }
                       await SyncService.pushSwitchesNow();
+                      if (v == false) {
+                        _closeMessAndMarkAbsent('l');
+                      }
                     },
                   ),
                   SwitchListTile(
@@ -7576,10 +7587,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       setState(() => globalEntryD = v);
                       if (v == true) {
                         NotificationService.sendPushNotificationToStudents("Dinner Time", "Mess Open");
-                      } else {
-                        await _closeMessAndMarkAbsent('d');
                       }
                       await SyncService.pushSwitchesNow();
+                      if (v == false) {
+                        _closeMessAndMarkAbsent('d');
+                      }
                     },
                   ),
                 ],
@@ -8110,7 +8122,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _closeMessAndMarkAbsent(String meal) async {
     try {
       DateTime now = realTime;
-      List<Future<void>> pushTasks = [];
+      Map<String, dynamic> batchUpdates = {};
       
       // Prevent ConcurrentModificationError by creating a copy of the list
       List<RegisteredStudent> studentsCopy = List.from(globalRegisteredStudents);
@@ -8136,13 +8148,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
         
         if (modified) {
-          // Use the exact same method students use to guarantee it writes correctly
-          pushTasks.add(SyncService.pushAttendance(key, globalAttendanceMap[key]!));
+          batchUpdates[key] = {
+            'l': globalAttendanceMap[key]!.l,
+            'd': globalAttendanceMap[key]!.d,
+          };
         }
       }
       
-      if (pushTasks.isNotEmpty) {
-        await Future.wait(pushTasks);
+      if (batchUpdates.isNotEmpty) {
+        // Fast atomic batch update to Firebase instead of hundreds of parallel calls
+        await SyncService.pushAttendanceBatch(batchUpdates);
       }
       if (mounted) {
         setState(() {});
@@ -8828,10 +8843,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               "Mess Open",
                             );
                           }
-                          if (v == false) {
-                            await _closeMessAndMarkAbsent('l');
-                          }
                           await SyncService.pushSwitchesNow();
+                          if (v == false) {
+                            _closeMessAndMarkAbsent('l');
+                          }
                         },
                       ),
                       SwitchListTile(
@@ -8849,10 +8864,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               "Mess Open",
                             );
                           }
-                          if (v == false) {
-                            await _closeMessAndMarkAbsent('d');
-                          }
                           await SyncService.pushSwitchesNow();
+                          if (v == false) {
+                            _closeMessAndMarkAbsent('d');
+                          }
                         },
                       ),
                     ],
