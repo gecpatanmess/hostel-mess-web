@@ -26,7 +26,6 @@ let activeTab = 'tabOverview';
 let cachedRoles = {};
 let cachedAdmins = { boys: [], girls: [] };
 let cachedStudents = { boys: [], girls: [] };
-let cachedNotices = {};
 let sessionTimeoutSeconds = 900; // 15 minutes
 let sessionTimerInterval = null;
 let currentSessionUser = null;
@@ -376,7 +375,6 @@ function setScope(scope) {
   renderAdminsTable();
   updateOverviewStats();
   applyScopeToAttendance();
-  applyScopeToNotices();
 
   const scopeLabel = scope === 'all' ? 'Both Hostels (Combined)' : `${scope.toUpperCase()} Hostel Only`;
   showToast(`Active View: ${scopeLabel}`, 'info');
@@ -420,22 +418,6 @@ function applyScopeToAttendance() {
       loadAttendanceRecords();
     }
   }
-}
-
-function applyScopeToNotices() {
-  const targetSelect = document.getElementById('noticeTarget');
-  const noticesTitle = document.getElementById('noticesFeedTitle');
-  if (currentScope === 'boys') {
-    if (targetSelect) targetSelect.value = 'boys';
-    if (noticesTitle) noticesTitle.innerText = "Boys Hostel Active Notices";
-  } else if (currentScope === 'girls') {
-    if (targetSelect) targetSelect.value = 'girls';
-    if (noticesTitle) noticesTitle.innerText = "Girls Hostel Active Notices";
-  } else {
-    if (targetSelect) targetSelect.value = 'both';
-    if (noticesTitle) noticesTitle.innerText = "Active Notices (Both Hostels)";
-  }
-  renderNoticesList(cachedNotices);
 }
 
 document.querySelectorAll('.nav-btn, .nav-tab-mobile').forEach(btn => {
@@ -507,8 +489,6 @@ function switchTab(tabId) {
       yearSelect.value = new Date().getFullYear().toString();
     }
     applyScopeToAttendance();
-  } else if (tabId === 'tabNotices') {
-    applyScopeToNotices();
   } else if (tabId === 'tabAdmins') {
     renderAdminsTable();
   } else if (tabId === 'tabOverview') {
@@ -523,7 +503,6 @@ function initAppListeners() {
   listenToAdmins();
   listenToStudents();
   listenToAuditLogs();
-  listenToNotices();
   setScope(currentScope);
 }
 
@@ -549,8 +528,7 @@ const defaultRolesSeed = {
       can_attendance_edit: true,
       can_students_manage: true,
       can_complaints: true,
-      can_notices: true,
-      can_manage_admins: true
+      can_notices: true
     }
   },
   admin: {
@@ -564,8 +542,7 @@ const defaultRolesSeed = {
       can_attendance_edit: true,
       can_students_manage: true,
       can_complaints: true,
-      can_notices: true,
-      can_manage_admins: true
+      can_notices: true
     }
   },
   mess_committee: {
@@ -579,8 +556,7 @@ const defaultRolesSeed = {
       can_attendance_edit: false,
       can_students_manage: false,
       can_complaints: true,
-      can_notices: true,
-      can_manage_admins: false
+      can_notices: true
     }
   },
   professor: {
@@ -594,8 +570,7 @@ const defaultRolesSeed = {
       can_attendance_edit: false,
       can_students_manage: false,
       can_complaints: true,
-      can_notices: true,
-      can_manage_admins: false
+      can_notices: true
     }
   }
 };
@@ -608,7 +583,28 @@ function listenToRoles() {
       cachedRoles = defaultRolesSeed;
     } else {
       cachedRoles = snap.val();
-      // Ensure admin has all standard permissions intact and permanently fixed
+
+      // Ensure super_admin has all standard permissions intact and can be toggled
+      if (!cachedRoles.super_admin) {
+        cachedRoles.super_admin = defaultRolesSeed.super_admin;
+        db.ref('roles/super_admin').set(defaultRolesSeed.super_admin);
+      } else if (!cachedRoles.super_admin.permissions) {
+        cachedRoles.super_admin.permissions = defaultRolesSeed.super_admin.permissions;
+        db.ref('roles/super_admin/permissions').set(defaultRolesSeed.super_admin.permissions);
+      } else {
+        let saUpdated = false;
+        Object.keys(defaultRolesSeed.super_admin.permissions).forEach(pk => {
+          if (cachedRoles.super_admin.permissions[pk] === undefined || cachedRoles.super_admin.permissions[pk] === null) {
+            cachedRoles.super_admin.permissions[pk] = true;
+            saUpdated = true;
+          }
+        });
+        if (saUpdated) {
+          db.ref('roles/super_admin/permissions').set(cachedRoles.super_admin.permissions);
+        }
+      }
+
+      // Ensure admin has all standard permissions intact
       if (!cachedRoles.admin) {
         cachedRoles.admin = defaultRolesSeed.admin;
         db.ref('roles/admin').set(defaultRolesSeed.admin);
@@ -627,6 +623,16 @@ function listenToRoles() {
           db.ref('roles/admin/permissions').set(cachedRoles.admin.permissions);
         }
       }
+
+      // Scrub obsolete can_manage_admins from all roles in Firebase & local cache
+      Object.keys(cachedRoles).forEach(rId => {
+        if (cachedRoles[rId] && cachedRoles[rId].permissions) {
+          if (cachedRoles[rId].permissions.can_manage_admins !== undefined) {
+            delete cachedRoles[rId].permissions.can_manage_admins;
+            db.ref(`roles/${rId}/permissions/can_manage_admins`).remove();
+          }
+        }
+      });
     }
     renderRolesGrid();
     updateRoleDropdowns();
@@ -644,8 +650,7 @@ const permissionLabels = {
   can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square" },
   can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate" },
   can_complaints: { label: "Complaints Access (View Complaints)", icon: "fa-triangle-exclamation" },
-  can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn" },
-  can_manage_admins: { label: "Admin Management (Add/Manage Staff)", icon: "fa-user-shield" }
+  can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn" }
 };
 
 const defaultStandardPerms = {
@@ -657,8 +662,7 @@ const defaultStandardPerms = {
   can_attendance_edit: { label: "Modify Attendance (Mark/Edit Attendance)", icon: "fa-pen-to-square", checked: false },
   can_students_manage: { label: "Student Management (Add/Delete/Rooms)", icon: "fa-user-graduate", checked: false },
   can_complaints: { label: "Complaints Access (View Complaints)", icon: "fa-triangle-exclamation", checked: true },
-  can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn", checked: true },
-  can_manage_admins: { label: "Admin Management (Add/Manage Staff)", icon: "fa-user-shield", checked: false }
+  can_notices: { label: "Notice Board (Broadcast & Delete Notices)", icon: "fa-bullhorn", checked: true }
 };
 
 let modalPermsState = JSON.parse(JSON.stringify(defaultStandardPerms));
@@ -703,11 +707,7 @@ function renderRolesGrid() {
     card.className = "app-card p-5 space-y-4 hover:shadow-md transition";
 
     const rolePerms = roleData.permissions || {};
-    Object.keys(rolePerms).forEach(k => {
-      if (!permissionLabels[k]) {
-        permissionLabels[k] = { label: k.replace(/_/g, ' ').toUpperCase(), icon: "fa-shield-halved" };
-      }
-    });
+    delete rolePerms.can_manage_admins;
 
     const allKeys = Object.keys(permissionLabels);
     let activeCount = 0;
@@ -725,7 +725,7 @@ function renderRolesGrid() {
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <label class="switch">
-              <input type="checkbox" ${isChecked ? 'checked' : ''} ${isRoot ? 'disabled' : ''} onchange="togglePermission('${roleId}', '${permKey}', this.checked)">
+              <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="togglePermission('${roleId}', '${permKey}', this.checked)">
               <span class="slider"></span>
             </label>
           </div>
@@ -1046,13 +1046,23 @@ async function submitNewAdmin() {
 
   const targets = scope === 'both' ? ['boys', 'girls'] : [scope];
 
+  // Remove if already exists with same phone from BOTH hostels first to avoid stale copies
+  for (const h of ['boys', 'girls']) {
+    const snap = await db.ref(`hostelData_${h}/admins`).get();
+    if (snap.exists() && snap.val()) {
+      let list = Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val());
+      list = list.filter(a => a && a.phone !== phone);
+      await db.ref(`hostelData_${h}/admins`).set(list);
+    }
+  }
+
+  // Re-insert into target hostels
   for (const h of targets) {
     const snap = await db.ref(`hostelData_${h}/admins`).get();
     let currentList = [];
     if (snap.exists() && snap.val()) {
       currentList = Array.isArray(snap.val()) ? snap.val() : Object.values(snap.val());
     }
-    // Remove if already exists with same phone
     currentList = currentList.filter(a => a && a.phone !== phone);
     currentList.push(adminObj);
     await db.ref(`hostelData_${h}/admins`).set(currentList);
@@ -1679,105 +1689,7 @@ function renderMonthlyAttendanceTable(list) {
   });
 }
 
-// ==================== 5. GLOBAL NOTICES ====================
-
-function listenToNotices() {
-  db.ref('super_admin_config/notices').on('value', snap => {
-    cachedNotices = snap.val() || {};
-    renderNoticesList(cachedNotices);
-  });
-}
-
-function renderNoticesList(noticesObj) {
-  const container = document.getElementById('noticesListContainer');
-  const countEl = document.getElementById('noticesCount');
-  if (!container) return;
-  container.innerHTML = '';
-
-  let list = Object.entries(noticesObj || {}).map(([id, n]) => ({ id, ...n }));
-  list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-
-  // Filter based on currentScope
-  if (currentScope === 'boys') {
-    list = list.filter(n => n.target === 'boys' || n.target === 'both' || !n.target);
-  } else if (currentScope === 'girls') {
-    list = list.filter(n => n.target === 'girls' || n.target === 'both' || !n.target);
-  }
-
-  const scopeBadgeText = currentScope === 'all' ? 'All Hostels' : `${currentScope.toUpperCase()} Only`;
-  if (countEl) countEl.innerText = `${list.length} notices (${scopeBadgeText})`;
-
-  if (list.length === 0) {
-    container.innerHTML = `<div class="text-xs text-[#64748B] italic p-6 text-center">No notices published for ${currentScope === 'all' ? 'any hostel' : currentScope + ' hostel'} yet.</div>`;
-    return;
-  }
-
-  list.forEach(n => {
-    const div = document.createElement('div');
-    div.className = "p-4 bg-white border border-slate-200 rounded-2xl relative group hover:border-[#135B26] transition shadow-sm";
-    div.innerHTML = `
-      <div class="flex items-start justify-between">
-        <div>
-          <div class="flex items-center gap-2">
-            <h4 class="font-bold text-[#0F172A] text-sm">${n.title}</h4>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border border-amber-200">${n.target || 'Both'}</span>
-          </div>
-          <p class="text-xs text-[#64748B] mt-1.5 leading-relaxed">${n.message}</p>
-          <div class="text-[10px] text-slate-400 mt-2 flex items-center gap-2 font-medium">
-            <i class="fa-regular fa-calendar text-[#135B26]"></i>
-            <span>${n.date ? new Date(n.date).toLocaleString() : ''}</span>
-            <span>•</span>
-            <span>By ${n.author || 'Super Admin'}</span>
-          </div>
-        </div>
-        <button onclick="deleteNotice('${n.id}')" class="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition" title="Delete notice">
-          <i class="fa-solid fa-trash-can text-sm"></i>
-        </button>
-      </div>
-    `;
-    container.appendChild(div);
-  });
-}
-
-async function publishNotice() {
-  const title = document.getElementById('noticeTitle').value.trim();
-  const message = document.getElementById('noticeMessage').value.trim();
-  const target = document.getElementById('noticeTarget').value;
-
-  if (!title || !message) return showToast('Please enter notice title and message', 'error');
-
-  const noticeId = `notice_${Date.now()}`;
-  const noticeData = {
-    title: title,
-    message: message,
-    target: target,
-    date: new Date().toISOString(),
-    author: currentSessionUser || 'Super Admin'
-  };
-
-  await db.ref(`super_admin_config/notices/${noticeId}`).set(noticeData);
-
-  // Sync to hostel specific nodes
-  const targets = target === 'both' ? ['boys', 'girls'] : [target];
-  for (const h of targets) {
-    await db.ref(`hostelData_${h}/notices_trigger`).set(Date.now());
-  }
-
-  await logAudit('NOTICE_PUBLISHED', `Broadcast notice "${title}" to ${target} hostels`);
-
-  document.getElementById('noticeTitle').value = '';
-  document.getElementById('noticeMessage').value = '';
-  showToast('Notice published successfully!', 'success');
-}
-
-async function deleteNotice(id) {
-  if (!confirm('Are you sure you want to delete this notice?')) return;
-  await db.ref(`super_admin_config/notices/${id}`).remove();
-  await logAudit('NOTICE_DELETED', `Deleted notice ${id}`);
-  showToast('Notice removed.', 'info');
-}
-
-// ==================== 6. AUDIT LOGGING ====================
+// ==================== 5. AUDIT LOGGING ====================
 
 async function logAudit(actionType, details) {
   const entry = {

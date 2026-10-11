@@ -205,10 +205,6 @@
           <i class="fa-solid fa-calendar-check text-xs"></i>
           <span>Live Attendance</span>
         </button>
-        <button data-tab="tabNotices" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
-          <i class="fa-solid fa-bullhorn text-xs"></i>
-          <span>Notices</span>
-        </button>
         <button data-tab="tabAudit" class="nav-tab-mobile px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-100/90 hover:text-white flex items-center gap-1.5 shrink-0">
           <i class="fa-solid fa-shield-cat text-xs"></i>
           <span>Audit Trail</span>
@@ -249,11 +245,6 @@
         <button data-tab="tabAttendance" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
           <i class="fa-solid fa-calendar-check w-5 text-center text-purple-600"></i>
           <span>Live Attendance</span>
-        </button>
-
-        <button data-tab="tabNotices" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
-          <i class="fa-solid fa-bullhorn w-5 text-center text-amber-500"></i>
-          <span>Notice Broadcast</span>
         </button>
 
         <button data-tab="tabAudit" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
@@ -703,65 +694,7 @@
           </div>
         </section>
 
-        <!-- ==================== TAB 5: GLOBAL NOTICES ==================== -->
-        <section id="tabNotices" class="tab-pane hidden space-y-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-2xl font-extrabold text-[#0F172A] tracking-tight">Global Notices Broadcast</h2>
-              <p class="text-xs text-[#64748B] mt-0.5">Publish master announcements to student mobile applications</p>
-            </div>
-          </div>
-
-          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Composer Card -->
-            <div class="app-card p-5 space-y-4">
-              <h3 class="font-bold text-sm text-[#0F172A] flex items-center gap-2">
-                <i class="fa-solid fa-pen-nib text-[#135B26]"></i>
-                <span>Broadcast New Notice</span>
-              </h3>
-
-              <div>
-                <label class="block text-xs font-bold text-[#64748B] mb-1">Notice Title</label>
-                <input type="text" id="noticeTitle" placeholder="e.g. Special Sunday Mess Feast" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs focus:border-[#135B26] focus:bg-white focus:outline-none transition">
-              </div>
-
-              <div>
-                <label class="block text-xs font-bold text-[#64748B] mb-1">Target Audience</label>
-                <select id="noticeTarget" class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs focus:border-[#135B26] focus:bg-white focus:outline-none transition">
-                  <option value="both">Both Hostels (Boys & Girls)</option>
-                  <option value="boys">Boys Hostel Only</option>
-                  <option value="girls">Girls Hostel Only</option>
-                </select>
-              </div>
-
-              <div>
-                <label class="block text-xs font-bold text-[#64748B] mb-1">Notice Message</label>
-                <textarea id="noticeMessage" rows="4" placeholder="Write announcement details..." class="w-full px-3.5 py-2 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs focus:border-[#135B26] focus:bg-white focus:outline-none transition resize-none"></textarea>
-              </div>
-
-              <button onclick="publishNotice()" class="w-full py-2.5 bg-[#135B26] hover:bg-[#0E441C] text-white font-bold rounded-xl text-xs transition shadow-md shadow-emerald-950/20 flex items-center justify-center gap-2">
-                <i class="fa-solid fa-paper-plane"></i>
-                <span>Publish Notice</span>
-              </button>
-            </div>
-
-            <!-- Published Notices Feed -->
-            <div class="lg:col-span-2 app-card p-5 space-y-4">
-              <div class="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 class="font-bold text-sm text-[#0F172A] flex items-center gap-2">
-                  <i class="fa-solid fa-bullhorn text-amber-500"></i>
-                  <span id="noticesFeedTitle">Active Notices</span>
-                </h3>
-                <span id="noticesCount" class="text-xs bg-[#E8F5E9] text-[#135B26] font-bold px-2 py-0.5 rounded-full border border-emerald-200">0 notices</span>
-              </div>
-              <div id="noticesListContainer" class="space-y-3">
-                <div class="text-xs text-[#64748B] italic p-6 text-center">Loading notices...</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ==================== TAB 6: SECURITY AUDIT LOGS ==================== -->
+        <!-- ==================== TAB 5: SECURITY AUDIT LOGS ==================== -->
         <section id="tabAudit" class="tab-pane hidden space-y-6">
           <div class="flex items-center justify-between">
             <div>

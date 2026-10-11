@@ -3741,18 +3741,39 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 24),
               FittedBox(
                 fit: BoxFit.scaleDown,
-                child: Text(
-                  (_authStage != AuthStage.identifier ||
-                          hasSavedStudent ||
-                          hasSavedAdmin)
-                      ? "${globalHostelMode == 'boys' ? 'Boys' : 'Girls'} Hostel Mess"
-                      : "Hostel Mess Management",
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                    color: brandDark,
-                    letterSpacing: -0.5,
-                  ),
+                child: Builder(
+                  builder: (context) {
+                    String titleText = "Hostel Mess Management";
+                    if (_authStage != AuthStage.identifier || hasSavedStudent || hasSavedAdmin) {
+                      if (_isAdminFlow || hasSavedAdmin || _matchedAdmin != null) {
+                        String scope = (_matchedAdmin?.hostelScope ??
+                                cachedAdminScope ??
+                                (hasSavedAdmin && savedAdminPhone != null ? getAdminHostelScope(savedAdminPhone!) : ''))
+                            .trim()
+                            .toLowerCase();
+                        if (scope == 'both') {
+                          titleText = "Boys / Girls Hostel Mess";
+                        } else if (scope == 'girls') {
+                          titleText = "Girls Hostel Mess";
+                        } else if (scope == 'boys') {
+                          titleText = "Boys Hostel Mess";
+                        } else {
+                          titleText = "${globalHostelMode == 'boys' ? 'Boys' : 'Girls'} Hostel Mess";
+                        }
+                      } else {
+                        titleText = "${globalHostelMode == 'boys' ? 'Boys' : 'Girls'} Hostel Mess";
+                      }
+                    }
+                    return Text(
+                      titleText,
+                      style: TextStyle(
+                        fontSize: 26,
+                        fontWeight: FontWeight.w700,
+                        color: brandDark,
+                        letterSpacing: -0.5,
+                      ),
+                    );
+                  },
                 ),
               ),
               const SizedBox(height: 8),
@@ -4679,23 +4700,55 @@ class _LoginScreenState extends State<LoginScreen> {
                           }
                           if (roleTitle.isEmpty) roleTitle = 'Admin';
                           final userName = _matchedAdmin?.name ?? (hasSavedAdmin ? (savedAdminName ?? '') : '');
+                          String adminScope = (_matchedAdmin?.hostelScope ??
+                                  cachedAdminScope ??
+                                  (targetPhone.isNotEmpty ? getAdminHostelScope(targetPhone) : ''))
+                              .trim()
+                              .toLowerCase();
+                          String scopeBadgeText = 'Boys / Girls Hostel';
+                          if (adminScope == 'boys') scopeBadgeText = 'Boys Hostel';
+                          if (adminScope == 'girls') scopeBadgeText = 'Girls Hostel';
+
                           return Column(
                             children: [
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: brandGreen.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: brandGreen.withValues(alpha: 0.25)),
-                                ),
-                                child: Text(
-                                  roleTitle,
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: brandGreen,
+                              Wrap(
+                                alignment: WrapAlignment.center,
+                                spacing: 8,
+                                runSpacing: 6,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: brandGreen.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: brandGreen.withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      roleTitle,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: brandGreen,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1565C0).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: const Color(0xFF1565C0).withValues(alpha: 0.25)),
+                                    ),
+                                    child: Text(
+                                      scopeBadgeText,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF1565C0),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               if (userName.isNotEmpty) ...[
                                 const SizedBox(height: 6),
@@ -5084,21 +5137,52 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               const SizedBox(height: 6),
               Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: brandGreen.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: brandGreen.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    "Role: ${getAdminRoleDisplayName(savedAdminPhone ?? '')}",
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: brandGreen,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: brandGreen.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: brandGreen.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        "Role: ${getAdminRoleDisplayName(savedAdminPhone ?? '')}",
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: brandGreen,
+                        ),
+                      ),
                     ),
-                  ),
+                    Builder(
+                      builder: (context) {
+                        final s = (savedAdminPhone != null ? getAdminHostelScope(savedAdminPhone!) : (cachedAdminScope ?? '')).trim().toLowerCase();
+                        String sText = "Boys / Girls Hostel";
+                        if (s == 'boys') sText = "Boys Hostel";
+                        if (s == 'girls') sText = "Girls Hostel";
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1565C0).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFF1565C0).withValues(alpha: 0.3)),
+                          ),
+                          child: Text(
+                            sText,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1565C0),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 20),
