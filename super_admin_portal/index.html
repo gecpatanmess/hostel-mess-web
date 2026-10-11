@@ -513,71 +513,192 @@
         <section id="tabAttendance" class="tab-pane hidden space-y-6">
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 id="attTitle" class="text-2xl font-extrabold text-[#0F172A] tracking-tight">Live Attendance Manager</h2>
-              <p id="attSubtitle" class="text-xs text-[#64748B] mt-0.5">Real-time attendance monitor & direct Super Admin override</p>
-            </div>
-          </div>
-
-          <!-- Filter Toolbar -->
-          <div class="app-card p-4 flex flex-wrap items-center gap-3">
-            <div>
-              <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Date</label>
-              <input type="date" id="attFilterDate" onchange="loadAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
+              <h2 id="attTitle" class="text-2xl font-extrabold text-[#0F172A] tracking-tight">Attendance Monitor</h2>
+              <p id="attSubtitle" class="text-xs text-[#64748B] mt-0.5">Real-time daily attendance sheets and comprehensive monthly records</p>
             </div>
 
-            <div>
-              <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Meal</label>
-              <select id="attFilterMeal" onchange="loadAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
-                <option value="l">Lunch</option>
-                <option value="d">Dinner</option>
-              </select>
-            </div>
-
-            <div id="attFilterHostelContainer">
-              <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Hostel</label>
-              <select id="attFilterHostel" onchange="loadAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
-                <option value="boys">Boys Hostel</option>
-                <option value="girls">Girls Hostel</option>
-              </select>
-            </div>
-
-            <div class="self-end">
-              <button onclick="loadAttendanceRecords()" class="px-4 py-2 bg-[#135B26] hover:bg-[#0E441C] text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5">
-                <i class="fa-solid fa-magnifying-glass"></i>
-                <span>Load Attendance</span>
+            <!-- View Switcher Tabs (Daily View vs. Monthly View) -->
+            <div class="flex items-center bg-white border border-slate-200 p-1 rounded-2xl shadow-xs gap-1">
+              <button id="btnAttViewDaily" onclick="setAttendanceSubView('daily')" class="px-4 py-2 rounded-xl text-xs font-bold transition bg-[#135B26] text-white shadow-xs flex items-center gap-2">
+                <i class="fa-solid fa-calendar-day"></i>
+                <span>Daily View</span>
+              </button>
+              <button id="btnAttViewMonthly" onclick="setAttendanceSubView('monthly')" class="px-4 py-2 rounded-xl text-xs font-semibold transition text-[#64748B] hover:text-[#0F172A] flex items-center gap-2">
+                <i class="fa-solid fa-calendar-days"></i>
+                <span>Monthly View</span>
               </button>
             </div>
+          </div>
 
-            <!-- Attendance Stats Badges -->
-            <div class="ml-auto flex items-center gap-3">
-              <div class="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-semibold text-[#0F172A]">
-                Total: <span id="attTotalStudents" class="font-bold">0</span>
+          <!-- ================= DAILY VIEW PANEL ================= -->
+          <div id="attDailySection" class="space-y-6">
+            <!-- Filter Toolbar -->
+            <div class="app-card p-4 flex flex-wrap items-center gap-3">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Select Date</label>
+                <input type="date" id="attFilterDate" onchange="loadAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
               </div>
-              <div class="px-3 py-1.5 bg-[#E8F5E9] text-[#135B26] rounded-xl text-xs font-bold border border-emerald-200">
-                Present: <span id="attPresentCount">0</span>
+
+              <div id="attFilterHostelContainer">
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Hostel</label>
+                <select id="attFilterHostel" onchange="loadAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
+                  <option value="both">Both Hostels</option>
+                  <option value="boys">Boys Hostel</option>
+                  <option value="girls">Girls Hostel</option>
+                </select>
               </div>
-              <div class="px-3 py-1.5 bg-red-50 text-red-700 rounded-xl text-xs font-bold border border-red-200">
-                Absent: <span id="attAbsentCount">0</span>
+
+              <div class="relative flex-1 min-w-[200px]">
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Search Student</label>
+                <div class="relative">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                  <input type="text" id="attDailySearch" oninput="handleDailyAttSearch(this.value)" placeholder="Search room or name..." class="w-full pl-8 pr-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs focus:border-[#135B26] focus:bg-white focus:outline-none transition">
+                </div>
+              </div>
+
+              <div class="self-end">
+                <button onclick="loadAttendanceRecords()" class="px-4 py-2 bg-[#135B26] hover:bg-[#0E441C] text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+                  <i class="fa-solid fa-rotate"></i>
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              <!-- Attendance Stats Badges -->
+              <div class="ml-auto flex items-center flex-wrap gap-2">
+                <div class="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-semibold text-[#0F172A]">
+                  Total: <span id="attDailyTotal" class="font-bold">0</span>
+                </div>
+                <div class="px-3 py-1.5 bg-[#E8F5E9] text-[#135B26] rounded-xl text-xs font-bold border border-emerald-200">
+                  Lunch P: <span id="attDailyLunchP">0</span>
+                </div>
+                <div class="px-3 py-1.5 bg-teal-50 text-teal-700 rounded-xl text-xs font-bold border border-teal-200">
+                  Dinner P: <span id="attDailyDinnerP">0</span>
+                </div>
+                <div class="px-3 py-1.5 bg-red-50 text-red-700 rounded-xl text-xs font-bold border border-red-200">
+                  Absent: <span id="attDailyAbsent">0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Daily Attendance Table -->
+            <div class="app-card overflow-hidden">
+              <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-[#64748B]">
+                <span class="font-bold text-[#0F172A]"><i class="fa-solid fa-clipboard-user mr-1.5 text-[#135B26]"></i>Daily Attendance Sheet</span>
+                <span>(Pure View-Only • Realtime Sync)</span>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs min-w-[540px]">
+                  <thead class="bg-slate-100 text-[#64748B] uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th class="py-3 px-4">Room No</th>
+                      <th class="py-3 px-4">Student Name</th>
+                      <th class="py-3 px-4 text-center">Lunch (L)</th>
+                      <th class="py-3 px-4 text-center">Dinner (D)</th>
+                      <th class="py-3 px-4 text-right">Daily Summary</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attDailyTableBody" class="divide-y divide-slate-100">
+                    <tr><td colspan="5" class="text-center py-8 text-[#64748B] italic">Loading daily attendance records...</td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
 
-          <!-- Attendance Table -->
-          <div class="app-card overflow-hidden">
-            <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs min-w-[540px]">
-                <thead class="bg-slate-100 text-[#64748B] uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th class="py-3 px-4">Room No</th>
-                    <th class="py-3 px-4">Student Name</th>
-                    <th class="py-3 px-4">Attendance Status</th>
-                    <th class="py-3 px-4 text-right">Super Admin Override</th>
-                  </tr>
-                </thead>
-                <tbody id="attendanceTableBody" class="divide-y divide-slate-100">
-                  <tr><td colspan="4" class="text-center py-8 text-[#64748B] italic">Click "Load Attendance" to view records.</td></tr>
-                </tbody>
-              </table>
+          <!-- ================= MONTHLY VIEW PANEL ================= -->
+          <div id="attMonthlySection" class="hidden space-y-6">
+            <!-- Filter Toolbar -->
+            <div class="app-card p-4 flex flex-wrap items-center gap-3">
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Select Month</label>
+                <select id="attMonthlyMonth" onchange="loadMonthlyAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
+                  <option value="1">January (જાન્યુઆરી)</option>
+                  <option value="2">February (ફેબ્રુઆરી)</option>
+                  <option value="3">March (માર્ચ)</option>
+                  <option value="4">April (એપ્રિલ)</option>
+                  <option value="5">May (મે)</option>
+                  <option value="6">June (જૂન)</option>
+                  <option value="7">July (જુલાઈ)</option>
+                  <option value="8">August (ઓગસ્ટ)</option>
+                  <option value="9">September (સપ્ટેમ્બર)</option>
+                  <option value="10">October (ઓક્ટોબર)</option>
+                  <option value="11">November (નવેમ્બર)</option>
+                  <option value="12">December (ડિસેમ્બર)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Select Year</label>
+                <select id="attMonthlyYear" onchange="loadMonthlyAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026" selected>2026</option>
+                  <option value="2027">2027</option>
+                </select>
+              </div>
+
+              <div id="attMonthlyHostelContainer">
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Hostel</label>
+                <select id="attMonthlyHostel" onchange="loadMonthlyAttendanceRecords()" class="px-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs font-medium focus:border-[#135B26] focus:outline-none">
+                  <option value="both">Both Hostels</option>
+                  <option value="boys">Boys Hostel</option>
+                  <option value="girls">Girls Hostel</option>
+                </select>
+              </div>
+
+              <div class="relative flex-1 min-w-[200px]">
+                <label class="block text-[10px] font-bold uppercase text-[#64748B] mb-1">Search Student</label>
+                <div class="relative">
+                  <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                  <input type="text" id="attMonthlySearch" oninput="handleMonthlyAttSearch(this.value)" placeholder="Search room or name..." class="w-full pl-8 pr-3 py-1.5 bg-[#EFF3FC] border border-slate-200 rounded-xl text-xs focus:border-[#135B26] focus:bg-white focus:outline-none transition">
+                </div>
+              </div>
+
+              <div class="self-end">
+                <button onclick="loadMonthlyAttendanceRecords()" class="px-4 py-2 bg-[#135B26] hover:bg-[#0E441C] text-white rounded-xl text-xs font-bold transition shadow-sm flex items-center gap-1.5">
+                  <i class="fa-solid fa-rotate"></i>
+                  <span>Load Month</span>
+                </button>
+              </div>
+
+              <!-- Monthly Summary Badges -->
+              <div class="ml-auto flex items-center flex-wrap gap-2">
+                <div class="px-3 py-1.5 bg-slate-100 rounded-xl text-xs font-semibold text-[#0F172A]">
+                  Students: <span id="attMonthTotalStudents" class="font-bold">0</span>
+                </div>
+                <div class="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold border border-blue-200">
+                  Days in Month: <span id="attMonthTotalDays">31</span>
+                </div>
+                <div class="px-3 py-1.5 bg-[#E8F5E9] text-[#135B26] rounded-xl text-xs font-bold border border-emerald-200">
+                  Avg Attendance: <span id="attMonthAvgRate">0%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Monthly Attendance Table -->
+            <div class="app-card overflow-hidden">
+              <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs text-[#64748B]">
+                <span class="font-bold text-[#0F172A]"><i class="fa-solid fa-table-list mr-1.5 text-[#135B26]"></i>Monthly Attendance Summary</span>
+                <span>(Aggregated Present Days & Percentage)</span>
+              </div>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs min-w-[640px]">
+                  <thead class="bg-slate-100 text-[#64748B] uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th class="py-3 px-4">Room No</th>
+                      <th class="py-3 px-4">Student Name</th>
+                      <th class="py-3 px-4 text-center">Lunch P</th>
+                      <th class="py-3 px-4 text-center">Dinner P</th>
+                      <th class="py-3 px-4 text-center">Total Present (Days)</th>
+                      <th class="py-3 px-4 text-center">Total Absent (Days)</th>
+                      <th class="py-3 px-4 text-right">Attendance Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attMonthlyTableBody" class="divide-y divide-slate-100">
+                    <tr><td colspan="7" class="text-center py-8 text-[#64748B] italic">Click "Load Month" to view monthly attendance.</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>

@@ -32,6 +32,9 @@ let sessionTimerInterval = null;
 let currentSessionUser = null;
 let isSetupPermanentlyLocked = false;
 let pendingDeleteTarget = null;
+let currentAttSubView = 'daily'; // 'daily' or 'monthly'
+let cachedDailyList = [];
+let cachedMonthlyList = [];
 
 // ==================== CRYPTOGRAPHIC & TOTP ENGINE (RFC 6238) ====================
 
@@ -382,27 +385,40 @@ function setScope(scope) {
 function applyScopeToAttendance() {
   const container = document.getElementById('attFilterHostelContainer');
   const hostelSelect = document.getElementById('attFilterHostel');
+  const containerMonthly = document.getElementById('attMonthlyHostelContainer');
+  const hostelSelectMonthly = document.getElementById('attMonthlyHostel');
   const attTitle = document.getElementById('attTitle');
   const attSubtitle = document.getElementById('attSubtitle');
 
   if (currentScope === 'boys') {
     if (hostelSelect) hostelSelect.value = 'boys';
     if (container) container.classList.add('hidden');
-    if (attTitle) attTitle.innerText = "Boys Hostel Live Attendance";
-    if (attSubtitle) attSubtitle.innerText = "Real-time attendance monitor & direct override for Boys Hostel only";
+    if (hostelSelectMonthly) hostelSelectMonthly.value = 'boys';
+    if (containerMonthly) containerMonthly.classList.add('hidden');
+    if (attTitle) attTitle.innerText = "Boys Hostel Attendance Monitor";
+    if (attSubtitle) attSubtitle.innerText = "Daily sheets and monthly records for Boys Hostel only";
   } else if (currentScope === 'girls') {
     if (hostelSelect) hostelSelect.value = 'girls';
     if (container) container.classList.add('hidden');
-    if (attTitle) attTitle.innerText = "Girls Hostel Live Attendance";
-    if (attSubtitle) attSubtitle.innerText = "Real-time attendance monitor & direct override for Girls Hostel only";
+    if (hostelSelectMonthly) hostelSelectMonthly.value = 'girls';
+    if (containerMonthly) containerMonthly.classList.add('hidden');
+    if (attTitle) attTitle.innerText = "Girls Hostel Attendance Monitor";
+    if (attSubtitle) attSubtitle.innerText = "Daily sheets and monthly records for Girls Hostel only";
   } else {
     if (container) container.classList.remove('hidden');
-    if (attTitle) attTitle.innerText = "Live Attendance Manager";
-    if (attSubtitle) attSubtitle.innerText = "Real-time attendance monitor & direct Super Admin override across Hostels";
+    if (containerMonthly) containerMonthly.classList.remove('hidden');
+    if (hostelSelect && (hostelSelect.value !== 'boys' && hostelSelect.value !== 'girls')) hostelSelect.value = 'both';
+    if (hostelSelectMonthly && (hostelSelectMonthly.value !== 'boys' && hostelSelectMonthly.value !== 'girls')) hostelSelectMonthly.value = 'both';
+    if (attTitle) attTitle.innerText = "Attendance Monitor (Both Hostels)";
+    if (attSubtitle) attSubtitle.innerText = "Daily sheets and monthly records across Both Hostels";
   }
 
   if (activeTab === 'tabAttendance') {
-    loadAttendanceRecords();
+    if (currentAttSubView === 'monthly') {
+      loadMonthlyAttendanceRecords();
+    } else {
+      loadAttendanceRecords();
+    }
   }
 }
 
@@ -481,6 +497,14 @@ function switchTab(tabId) {
     const dateInput = document.getElementById('attFilterDate');
     if (dateInput && !dateInput.value) {
       dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    const monthSelect = document.getElementById('attMonthlyMonth');
+    if (monthSelect && !monthSelect.value) {
+      monthSelect.value = (new Date().getMonth() + 1).toString();
+    }
+    const yearSelect = document.getElementById('attMonthlyYear');
+    if (yearSelect && !yearSelect.value) {
+      yearSelect.value = new Date().getFullYear().toString();
     }
     applyScopeToAttendance();
   } else if (tabId === 'tabNotices') {
@@ -1225,90 +1249,434 @@ function updateOverviewStats() {
   }
 }
 
-// ==================== 4. LIVE ATTENDANCE VIEWER & MODIFIER ====================
+// ==================== 4. ATTENDANCE MONITOR (VIEW-ONLY DAILY & MONTHLY) ====================
 
-async function loadAttendanceRecords() {
-  const date = document.getElementById('attFilterDate').value;
-  const meal = document.getElementById('attFilterMeal').value;
-  let hostel = document.getElementById('attFilterHostel')?.value || 'boys';
-  if (currentScope === 'boys') hostel = 'boys';
-  if (currentScope === 'girls') hostel = 'girls';
-  const tbody = document.getElementById('attendanceTableBody');
+function setAttendanceSubView(view) {
+  currentAttSubView = view;
+  const btnDaily = document.getElementById('btnAttViewDaily');
+  const btnMonthly = document.getElementById('btnAttViewMonthly');
+  const secDaily = document.getElementById('attDailySection');
+  const secMonthly = document.getElementById('attMonthlySection');
 
-  if (!date) return showToast('Please select a date', 'error');
+  if (view === 'daily') {
+    if (secDaily) secDaily.classList.remove('hidden');
+    if (secMonthly) secMonthly.classList.add('hidden');
 
-  tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Loading live attendance sheet...</td></tr>`;
+    if (btnDaily) {
+      btnDaily.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-[#135B26] text-white shadow-xs flex items-center gap-2";
+    }
+    if (btnMonthly) {
+      btnMonthly.className = "px-4 py-2 rounded-xl text-xs font-semibold transition text-[#64748B] hover:text-[#0F172A] flex items-center gap-2";
+    }
 
-  try {
-    // 1. Get students for selected hostel
-    const snapStudents = await db.ref(`hostelData_${hostel}/students`).get();
-    const studentsVal = snapStudents.val() || [];
-    const students = Array.isArray(studentsVal) ? studentsVal : Object.values(studentsVal);
+    const dateInput = document.getElementById('attFilterDate');
+    if (dateInput && !dateInput.value) {
+      dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    loadAttendanceRecords();
+  } else {
+    if (secDaily) secDaily.classList.add('hidden');
+    if (secMonthly) secMonthly.classList.remove('hidden');
 
-    // 2. Get attendance data for selected hostel
-    const snapAtt = await db.ref(`hostelData_${hostel}/attendance`).get();
-    const attMap = snapAtt.val() || {};
+    if (btnMonthly) {
+      btnMonthly.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-[#135B26] text-white shadow-xs flex items-center gap-2";
+    }
+    if (btnDaily) {
+      btnDaily.className = "px-4 py-2 rounded-xl text-xs font-semibold transition text-[#64748B] hover:text-[#0F172A] flex items-center gap-2";
+    }
 
-    let presentCount = 0;
-    let absentCount = 0;
-
-    tbody.innerHTML = '';
-    document.getElementById('attTotalStudents').innerText = students.length;
-
-    students.sort((a, b) => (a.roomNo || '').localeCompare(b.roomNo || '', undefined, { numeric: true }));
-
-    students.forEach(st => {
-      const key = `${date}_${st.roomNo}_${st.name}`;
-      const rec = attMap[key] || {};
-      const status = meal === 'l' ? (rec.l || '-') : (rec.d || '-');
-
-      if (status === 'P') presentCount++;
-      if (status === 'A') absentCount++;
-
-      let statusBadge = '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Unmarked (-)</span>';
-      if (status === 'P') statusBadge = '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200">Present (P)</span>';
-      if (status === 'A') statusBadge = '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">Absent (A)</span>';
-
-      const tr = document.createElement('tr');
-      tr.className = "hover:bg-[#E8F5E9]/25 transition";
-      tr.innerHTML = `
-        <td class="py-3 px-4 font-mono font-bold text-[#0F172A]">${st.roomNo || '-'}</td>
-        <td class="py-3 px-4 font-semibold text-[#0F172A]">${st.name}</td>
-        <td class="py-3 px-4">${statusBadge}</td>
-        <td class="py-3 px-4 text-right space-x-1.5">
-          <button onclick="modifyAttendanceStatus('${hostel}', '${date}', '${st.roomNo}', '${st.name}', '${meal}', 'P')" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-[#135B26] hover:bg-[#0E441C] text-white transition shadow-sm">
-            Mark P
-          </button>
-          <button onclick="modifyAttendanceStatus('${hostel}', '${date}', '${st.roomNo}', '${st.name}', '${meal}', 'A')" class="px-2.5 py-1 text-xs font-bold rounded-lg bg-red-600 hover:bg-red-700 text-white transition shadow-sm">
-            Mark A
-          </button>
-          <button onclick="modifyAttendanceStatus('${hostel}', '${date}', '${st.roomNo}', '${st.name}', '${meal}', '-')" class="px-2 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition">
-            Clear
-          </button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    document.getElementById('attPresentCount').innerText = presentCount;
-    document.getElementById('attAbsentCount').innerText = absentCount;
-
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-red-600">Error loading attendance: ${e.message}</td></tr>`;
+    const monthSelect = document.getElementById('attMonthlyMonth');
+    if (monthSelect && !monthSelect.value) {
+      monthSelect.value = (new Date().getMonth() + 1).toString();
+    }
+    const yearSelect = document.getElementById('attMonthlyYear');
+    if (yearSelect && !yearSelect.value) {
+      yearSelect.value = new Date().getFullYear().toString();
+    }
+    loadMonthlyAttendanceRecords();
   }
 }
 
-async function modifyAttendanceStatus(hostel, date, room, name, meal, newStatus) {
-  const key = `${date}_${room}_${name}`;
-  try {
-    const mealField = meal === 'l' ? 'l' : 'd';
-    await db.ref(`hostelData_${hostel}/attendance/${key}/${mealField}`).set(newStatus);
-    await logAudit('ATTENDANCE_MODIFIED', `Super Admin modified ${hostel} hostel ${date} ${meal === 'l' ? 'Lunch' : 'Dinner'} for ${name} (Room ${room}) -> ${newStatus}`);
-    showToast(`Updated ${name} -> ${newStatus}`, 'success');
-    loadAttendanceRecords();
-  } catch (e) {
-    showToast(`Failed to update attendance: ${e.message}`, 'error');
+// Attendance Record lookup helper to handle both padded and unpadded date keys
+function getStudentAttRecord(attMap, year, month, day, roomNo, studentName) {
+  if (!attMap) return null;
+  const y = Number(year);
+  const m = Number(month);
+  const d = Number(day);
+  const mPad = String(m).padStart(2, '0');
+  const dPad = String(d).padStart(2, '0');
+  const room = roomNo ? String(roomNo).trim() : '';
+  const name = studentName ? String(studentName).trim() : '';
+
+  const keys = [
+    `${y}-${m}-${d}_${room}_${name}`,
+    `${y}-${mPad}-${dPad}_${room}_${name}`,
+    `${y}-${mPad}-${d}_${room}_${name}`,
+    `${y}-${m}-${dPad}_${room}_${name}`
+  ];
+
+  for (const k of keys) {
+    if (attMap[k] !== undefined && attMap[k] !== null) {
+      return attMap[k];
+    }
   }
+  return null;
+}
+
+// --- DAILY ATTENDANCE ---
+
+async function loadAttendanceRecords() {
+  const dateInput = document.getElementById('attFilterDate');
+  const date = dateInput ? dateInput.value : '';
+  let hostel = document.getElementById('attFilterHostel')?.value || 'both';
+  if (currentScope === 'boys') hostel = 'boys';
+  if (currentScope === 'girls') hostel = 'girls';
+
+  const tbody = document.getElementById('attDailyTableBody');
+  if (!tbody) return;
+
+  if (!date) return showToast('Please select a date', 'error');
+
+  const [yearStr, monthStr, dayStr] = date.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+
+  tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Loading daily attendance...</td></tr>`;
+
+  try {
+    const hostelsToFetch = hostel === 'both' ? ['boys', 'girls'] : [hostel];
+    let combinedStudents = [];
+    let combinedAttMaps = {};
+
+    for (const h of hostelsToFetch) {
+      const snapStudents = await db.ref(`hostelData_${h}/students`).get();
+      const val = snapStudents.val() || [];
+      const stList = Array.isArray(val) ? val : Object.values(val);
+      stList.forEach(s => {
+        if (s && s.name) {
+          combinedStudents.push({ ...s, hostelKey: h });
+        }
+      });
+
+      const snapAtt = await db.ref(`hostelData_${h}/attendance`).get();
+      combinedAttMaps[h] = snapAtt.val() || {};
+    }
+
+    // Sort room number numerically
+    combinedStudents.sort((a, b) => {
+      const rA = a.roomNo || '';
+      const rB = b.roomNo || '';
+      return rA.localeCompare(rB, undefined, { numeric: true });
+    });
+
+    let lunchP = 0;
+    let dinnerP = 0;
+    let absent = 0;
+
+    cachedDailyList = combinedStudents.map(st => {
+      const attMap = combinedAttMaps[st.hostelKey] || {};
+      const rec = getStudentAttRecord(attMap, year, month, day, st.roomNo, st.name) || {};
+      const l = rec.l || '-';
+      const d = rec.d || '-';
+
+      if (l === 'P') lunchP++;
+      if (d === 'P') dinnerP++;
+      if (l === 'A' || d === 'A') absent++;
+
+      return {
+        roomNo: st.roomNo || '-',
+        name: st.name || '-',
+        hostel: st.hostelKey,
+        l: l,
+        d: d
+      };
+    });
+
+    if (document.getElementById('attDailyTotal')) {
+      document.getElementById('attDailyTotal').innerText = cachedDailyList.length;
+    }
+    if (document.getElementById('attDailyLunchP')) {
+      document.getElementById('attDailyLunchP').innerText = lunchP;
+    }
+    if (document.getElementById('attDailyDinnerP')) {
+      document.getElementById('attDailyDinnerP').innerText = dinnerP;
+    }
+    if (document.getElementById('attDailyAbsent')) {
+      document.getElementById('attDailyAbsent').innerText = absent;
+    }
+
+    const searchVal = document.getElementById('attDailySearch')?.value || '';
+    handleDailyAttSearch(searchVal);
+
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-red-600 font-semibold">Error loading attendance: ${e.message}</td></tr>`;
+  }
+}
+
+function handleDailyAttSearch(val) {
+  const q = (val || '').trim().toLowerCase();
+  if (!q) {
+    renderDailyAttendanceTable(cachedDailyList);
+    return;
+  }
+  const filtered = cachedDailyList.filter(item => 
+    (item.roomNo || '').toLowerCase().includes(q) || 
+    (item.name || '').toLowerCase().includes(q)
+  );
+  renderDailyAttendanceTable(filtered);
+}
+
+function renderDailyAttendanceTable(list) {
+  const tbody = document.getElementById('attDailyTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#64748B] italic">No attendance records found.</td></tr>`;
+    return;
+  }
+
+  const isBothScope = (currentScope === 'all');
+
+  list.forEach(item => {
+    // Lunch Badge
+    let lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">Unmarked (-)</span>';
+    if (item.l === 'P') {
+      lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Present</span>';
+    } else if (item.l === 'A') {
+      lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-xmark text-[10px]"></i> Absent</span>';
+    }
+
+    // Dinner Badge
+    let dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">Unmarked (-)</span>';
+    if (item.d === 'P') {
+      dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Present</span>';
+    } else if (item.d === 'A') {
+      dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-xmark text-[10px]"></i> Absent</span>';
+    }
+
+    // Daily Summary Badge
+    let summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">—</span>';
+    if (item.l === 'P' && item.d === 'P') {
+      summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1"><i class="fa-solid fa-utensils"></i> Full Day (L+D)</span>';
+    } else if (item.l === 'P') {
+      summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1"><i class="fa-solid fa-sun"></i> Lunch Only</span>';
+    } else if (item.d === 'P') {
+      summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200 inline-flex items-center gap-1"><i class="fa-solid fa-moon"></i> Dinner Only</span>';
+    } else if (item.l === 'A' || item.d === 'A') {
+      summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1"><i class="fa-solid fa-ban"></i> Absent</span>';
+    }
+
+    const hostelTag = isBothScope ? `<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${item.hostel === 'boys' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}">${item.hostel === 'boys' ? 'Boys' : 'Girls'}</span>` : '';
+
+    const tr = document.createElement('tr');
+    tr.className = "hover:bg-[#E8F5E9]/25 transition";
+    tr.innerHTML = `
+      <td class="py-3 px-4 font-mono font-bold text-[#0F172A] whitespace-nowrap">
+        ${item.roomNo}
+        ${hostelTag}
+      </td>
+      <td class="py-3 px-4 font-semibold text-[#0F172A]">${item.name}</td>
+      <td class="py-3 px-4 text-center">${lunchBadge}</td>
+      <td class="py-3 px-4 text-center">${dinnerBadge}</td>
+      <td class="py-3 px-4 text-right">${summaryBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// --- MONTHLY ATTENDANCE ---
+
+async function loadMonthlyAttendanceRecords() {
+  const monthSelect = document.getElementById('attMonthlyMonth');
+  const yearSelect = document.getElementById('attMonthlyYear');
+  const month = Number(monthSelect ? monthSelect.value : (new Date().getMonth() + 1));
+  const year = Number(yearSelect ? yearSelect.value : new Date().getFullYear());
+
+  let hostel = document.getElementById('attMonthlyHostel')?.value || 'both';
+  if (currentScope === 'boys') hostel = 'boys';
+  if (currentScope === 'girls') hostel = 'girls';
+
+  const tbody = document.getElementById('attMonthlyTableBody');
+  if (!tbody) return;
+
+  tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Aggregating monthly attendance for ${month}/${year}...</td></tr>`;
+
+  try {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const hostelsToFetch = hostel === 'both' ? ['boys', 'girls'] : [hostel];
+    let combinedStudents = [];
+    let combinedAttMaps = {};
+
+    for (const h of hostelsToFetch) {
+      const snapStudents = await db.ref(`hostelData_${h}/students`).get();
+      const val = snapStudents.val() || [];
+      const stList = Array.isArray(val) ? val : Object.values(val);
+      stList.forEach(s => {
+        if (s && s.name) {
+          combinedStudents.push({ ...s, hostelKey: h });
+        }
+      });
+
+      const snapAtt = await db.ref(`hostelData_${h}/attendance`).get();
+      combinedAttMaps[h] = snapAtt.val() || {};
+    }
+
+    combinedStudents.sort((a, b) => {
+      const rA = a.roomNo || '';
+      const rB = b.roomNo || '';
+      return rA.localeCompare(rB, undefined, { numeric: true });
+    });
+
+    let totalAttRateSum = 0;
+    let studentsWithDataCount = 0;
+
+    cachedMonthlyList = combinedStudents.map(st => {
+      const attMap = combinedAttMaps[st.hostelKey] || {};
+      let lunchPCount = 0;
+      let dinnerPCount = 0;
+      let presentDays = 0;
+      let absentDays = 0;
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const rec = getStudentAttRecord(attMap, year, month, d, st.roomNo, st.name);
+        if (rec) {
+          const isLP = rec.l === 'P';
+          const isDP = rec.d === 'P';
+          const isLA = rec.l === 'A';
+          const isDA = rec.d === 'A';
+
+          if (isLP) lunchPCount++;
+          if (isDP) dinnerPCount++;
+
+          if (isLP || isDP) {
+            presentDays++;
+          } else if (isLA || isDA) {
+            absentDays++;
+          }
+        }
+      }
+
+      const totalMarkedDays = presentDays + absentDays;
+      const rate = totalMarkedDays > 0 ? Math.round((presentDays / totalMarkedDays) * 100) : 0;
+
+      if (totalMarkedDays > 0) {
+        totalAttRateSum += rate;
+        studentsWithDataCount++;
+      }
+
+      return {
+        roomNo: st.roomNo || '-',
+        name: st.name || '-',
+        hostel: st.hostelKey,
+        lunchPCount,
+        dinnerPCount,
+        presentDays,
+        absentDays,
+        totalMarkedDays,
+        attendanceRate: rate
+      };
+    });
+
+    const avgRate = studentsWithDataCount > 0 ? Math.round(totalAttRateSum / studentsWithDataCount) : 0;
+
+    if (document.getElementById('attMonthTotalStudents')) {
+      document.getElementById('attMonthTotalStudents').innerText = cachedMonthlyList.length;
+    }
+    if (document.getElementById('attMonthTotalDays')) {
+      document.getElementById('attMonthTotalDays').innerText = daysInMonth;
+    }
+    if (document.getElementById('attMonthAvgRate')) {
+      document.getElementById('attMonthAvgRate').innerText = `${avgRate}%`;
+    }
+
+    const searchVal = document.getElementById('attMonthlySearch')?.value || '';
+    handleMonthlyAttSearch(searchVal);
+
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-red-600 font-semibold">Error aggregating monthly attendance: ${e.message}</td></tr>`;
+  }
+}
+
+function handleMonthlyAttSearch(val) {
+  const q = (val || '').trim().toLowerCase();
+  if (!q) {
+    renderMonthlyAttendanceTable(cachedMonthlyList);
+    return;
+  }
+  const filtered = cachedMonthlyList.filter(item => 
+    (item.roomNo || '').toLowerCase().includes(q) || 
+    (item.name || '').toLowerCase().includes(q)
+  );
+  renderMonthlyAttendanceTable(filtered);
+}
+
+function renderMonthlyAttendanceTable(list) {
+  const tbody = document.getElementById('attMonthlyTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-[#64748B] italic">No student attendance records for this month.</td></tr>`;
+    return;
+  }
+
+  const isBothScope = (currentScope === 'all');
+
+  list.forEach(st => {
+    const hostelTag = isBothScope ? `<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${st.hostel === 'boys' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}">${st.hostel === 'boys' ? 'Boys' : 'Girls'}</span>` : '';
+
+    let rateDisplay = '';
+    if (st.totalMarkedDays === 0) {
+      rateDisplay = '<span class="text-xs text-slate-400 font-medium italic">No data</span>';
+    } else {
+      let barColor = 'bg-[#135B26]';
+      let textColor = 'text-[#135B26]';
+      if (st.attendanceRate < 50) {
+        barColor = 'bg-rose-600';
+        textColor = 'text-rose-600';
+      } else if (st.attendanceRate < 75) {
+        barColor = 'bg-amber-600';
+        textColor = 'text-amber-600';
+      }
+
+      rateDisplay = `
+        <div class="flex items-center justify-end gap-2">
+          <div class="w-16 bg-slate-200 rounded-full h-2 overflow-hidden">
+            <div class="${barColor} h-2 rounded-full" style="width: ${st.attendanceRate}%"></div>
+          </div>
+          <span class="text-xs font-bold ${textColor} min-w-[38px] text-right">${st.attendanceRate}%</span>
+        </div>
+      `;
+    }
+
+    const tr = document.createElement('tr');
+    tr.className = "hover:bg-[#E8F5E9]/25 transition";
+    tr.innerHTML = `
+      <td class="py-3 px-4 font-mono font-bold text-[#0F172A] whitespace-nowrap">
+        ${st.roomNo}
+        ${hostelTag}
+      </td>
+      <td class="py-3 px-4 font-semibold text-[#0F172A]">${st.name}</td>
+      <td class="py-3 px-4 text-center">
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200">${st.lunchPCount}</span>
+      </td>
+      <td class="py-3 px-4 text-center">
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">${st.dinnerPCount}</span>
+      </td>
+      <td class="py-3 px-4 text-center">
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">${st.presentDays} days</span>
+      </td>
+      <td class="py-3 px-4 text-center">
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold ${st.absentDays > 0 ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-slate-100 text-slate-500'}">${st.absentDays} days</span>
+      </td>
+      <td class="py-3 px-4 text-right">
+        ${rateDisplay}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
 }
 
 // ==================== 5. GLOBAL NOTICES ====================
