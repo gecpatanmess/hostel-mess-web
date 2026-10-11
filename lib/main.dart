@@ -1279,7 +1279,7 @@ void main() async {
   runApp(const MyApp());
 } // Global Brand Colors for consistency
 
-const Color brandGreen = Color(0xFF135B26);
+const Color brandGreen = Color(0xFFEA580C);
 const Color brandBg = Color(0xFFF6F8FC);
 const Color brandInputBg = Color(0xFFEFF3FC);
 const Color brandDark = Color(0xFF0F172A);
@@ -2487,7 +2487,7 @@ class _OtpVerificationDialogState extends State<_OtpVerificationDialog> {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE8F5E9),
+                  color: const Color(0xFFFFF7ED),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -4659,7 +4659,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               width: 96,
                               height: 96,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE8F5E9),
+                                color: const Color(0xFFFFF7ED),
                                 shape: BoxShape.circle,
                                 image:
                                     (studentPhotoUrl != null &&
@@ -5136,7 +5136,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           width: 96,
                           height: 96,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F5E9),
+                            color: const Color(0xFFFFF7ED),
                             shape: BoxShape.circle,
                             image:
                                 (adminPhotoUrl != null &&
@@ -6773,7 +6773,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
                   leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFE8F5E9),
+                    backgroundColor: Color(0xFFFFF7ED),
                     child: Icon(Icons.notifications, color: brandGreen),
                   ),
                   title: Text(
@@ -9450,7 +9450,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                 decoration: BoxDecoration(
                   color: !isPortalOpen
                       ? const Color(0xFFFFF3E0)
-                      : (isLimitReached ? const Color(0xFFFFEBEE) : const Color(0xFFE8F5E9)),
+                      : (isLimitReached ? const Color(0xFFFFEBEE) : const Color(0xFFFFF7ED)),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: !isPortalOpen
@@ -9869,7 +9869,7 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
                 margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: isPortalOpen ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+                  color: isPortalOpen ? const Color(0xFFFFF7ED) : const Color(0xFFFFF3E0),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: isPortalOpen ? Colors.green.shade300 : Colors.orange.shade300,

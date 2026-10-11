@@ -164,7 +164,7 @@ function setScope(scope) {
   currentScope = scope;
   ['scopeAll', 'scopeBoys', 'scopeGirls'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.className = "px-2 sm:px-2.5 py-1 rounded-lg transition text-emerald-100 hover:text-white";
+    if (el) el.className = "px-2 sm:px-2.5 py-1 rounded-lg transition text-orange-100 hover:text-white";
   });
 
   const activeEl = document.getElementById(scope === 'all' ? 'scopeAll' : (scope === 'boys' ? 'scopeBoys' : 'scopeGirls'));
@@ -174,7 +174,7 @@ function setScope(scope) {
     } else if (scope === 'girls') {
       activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-pink-600 text-white shadow-xs";
     } else {
-      activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-white text-[#135B26] shadow-xs";
+      activeEl.className = "px-2 sm:px-2.5 py-1 rounded-lg font-bold transition bg-white text-[#EA580C] shadow-xs";
     }
   }
 
@@ -286,13 +286,13 @@ function switchTab(tabId) {
   document.querySelectorAll('.nav-tab-mobile').forEach(btn => {
     if (btn.getAttribute('data-tab') === tabId) {
       btn.classList.add('active');
-      btn.classList.remove('text-emerald-100/90');
+      btn.classList.remove('text-orange-100/90');
       try {
         btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       } catch (e) {}
     } else {
       btn.classList.remove('active');
-      btn.classList.add('text-emerald-100/90');
+      btn.classList.add('text-orange-100/90');
     }
   });
 
@@ -505,8 +505,8 @@ function renderCreateRolePermsList() {
     row.className = "flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl text-xs hover:bg-slate-100 transition border border-transparent hover:border-slate-200";
     row.innerHTML = `
       <label class="flex items-center gap-2.5 cursor-pointer flex-1 select-none">
-        <input type="checkbox" id="perm_cb_${key}" ${item.checked ? 'checked' : ''} onchange="modalPermsState['${key}'].checked = this.checked" class="w-4 h-4 accent-[#135B26] rounded">
-        <i class="fa-solid ${item.icon || 'fa-shield-halved'} text-[#135B26] w-4 text-center"></i>
+        <input type="checkbox" id="perm_cb_${key}" ${item.checked ? 'checked' : ''} onchange="modalPermsState['${key}'].checked = this.checked" class="w-4 h-4 accent-[#EA580C] rounded">
+        <i class="fa-solid ${item.icon || 'fa-shield-halved'} text-[#EA580C] w-4 text-center"></i>
         <span class="font-medium text-[#0F172A]">${item.label}</span>
       </label>
     `;
@@ -547,7 +547,7 @@ function renderRolesGrid() {
       togglesHtml += `
         <div class="flex items-center justify-between p-2.5 bg-[#EFF3FC] rounded-xl border border-slate-200/70 hover:border-slate-300 transition">
           <div class="flex items-center gap-2.5 flex-1 pr-2">
-            <i class="fa-solid ${permMeta.icon || 'fa-shield-halved'} text-[#135B26] text-xs w-4 text-center"></i>
+            <i class="fa-solid ${permMeta.icon || 'fa-shield-halved'} text-[#EA580C] text-xs w-4 text-center"></i>
             <span class="text-xs font-semibold text-[#0F172A]">${permMeta.label}</span>
           </div>
           <div class="flex items-center gap-2 shrink-0">
@@ -567,8 +567,8 @@ function renderRolesGrid() {
         <div>
           <div class="flex items-center gap-2 flex-wrap">
             <h3 class="font-extrabold text-[#0F172A] text-base">${roleData.name || roleId}</h3>
-            <span class="px-2 py-0.5 text-[10px] uppercase font-mono font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200 rounded-md">${roleId}</span>
-            <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${activeCount > 0 ? 'bg-emerald-100 text-[#135B26]' : 'bg-slate-100 text-slate-500'}">
+            <span class="px-2 py-0.5 text-[10px] uppercase font-mono font-bold bg-[#FFF7ED] text-[#EA580C] border border-orange-200 rounded-md">${roleId}</span>
+            <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${activeCount > 0 ? 'bg-orange-100 text-[#EA580C]' : 'bg-slate-100 text-slate-500'}">
               ${activeCount} / ${totalPerms} Active
             </span>
           </div>
@@ -696,7 +696,7 @@ function setAdminRoleFilter(filterRole) {
   const activeId = filterMap[filterRole];
   if (activeId) {
     const el = document.getElementById(activeId);
-    if (el) el.className = "px-3 py-1.5 rounded-xl font-bold bg-[#135B26] text-white shadow-xs transition";
+    if (el) el.className = "px-3 py-1.5 rounded-xl font-bold bg-[#EA580C] text-white shadow-xs transition";
   }
 
   renderAdminsTable();
@@ -784,18 +784,18 @@ function renderAdminsTable() {
     const isRoot = admin.phone === '9427329977' || admin.phone === '9313279977' || admin.phone === '9586401483';
     const roleTitle = cachedRoles[admin.role]?.name || admin.role || 'Admin';
     const scopeLabel = admin.hostelScope === 'boys' ? 'Boys Only' : (admin.hostelScope === 'girls' ? 'Girls Only' : 'Both Hostels');
-    const scopeColor = admin.hostelScope === 'boys' ? 'text-blue-700 bg-blue-50 border-blue-200' : (admin.hostelScope === 'girls' ? 'text-pink-700 bg-pink-50 border-pink-200' : 'text-[#135B26] bg-[#E8F5E9] border-emerald-200');
+    const scopeColor = admin.hostelScope === 'boys' ? 'text-blue-700 bg-blue-50 border-blue-200' : (admin.hostelScope === 'girls' ? 'text-pink-700 bg-pink-50 border-pink-200' : 'text-[#EA580C] bg-[#FFF7ED] border-orange-200');
 
     let roleBadgeColor = 'bg-slate-100 text-[#0F172A] border-slate-200';
-    if (admin.role === 'admin') roleBadgeColor = 'bg-[#E8F5E9] text-[#135B26] border-emerald-300';
+    if (admin.role === 'admin') roleBadgeColor = 'bg-[#FFF7ED] text-[#EA580C] border-orange-300';
     if (admin.role === 'mess_committee') roleBadgeColor = 'bg-teal-50 text-teal-700 border-teal-200';
     if (admin.role === 'professor') roleBadgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
 
     const tr = document.createElement('tr');
-    tr.className = "hover:bg-[#E8F5E9]/25 transition";
+    tr.className = "hover:bg-[#FFF7ED]/25 transition";
     tr.innerHTML = `
       <td class="py-3 px-4 font-bold text-[#0F172A] flex items-center gap-3">
-        <div class="w-8 h-8 rounded-full bg-[#E8F5E9] text-[#135B26] flex items-center justify-center font-bold text-xs shadow-sm">
+        <div class="w-8 h-8 rounded-full bg-[#FFF7ED] text-[#EA580C] flex items-center justify-center font-bold text-xs shadow-sm">
           <i class="fa-solid fa-user"></i>
         </div>
         <div>
@@ -803,7 +803,7 @@ function renderAdminsTable() {
           <div class="text-[11px] text-[#64748B] font-normal">${admin.email || 'No email registered'}</div>
         </div>
       </td>
-      <td class="py-3 px-4 font-mono font-bold text-[#135B26]">${admin.phone}</td>
+      <td class="py-3 px-4 font-mono font-bold text-[#EA580C]">${admin.phone}</td>
       <td class="py-3 px-4">
         <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${roleBadgeColor}">${roleTitle}</span>
       </td>
@@ -813,7 +813,7 @@ function renderAdminsTable() {
       <td class="py-3 px-4 text-[#64748B] capitalize">${admin.location} Hostel DB</td>
       <td class="py-3 px-4 text-right space-x-1.5 whitespace-nowrap">
         <button onclick="openEditAdminModal('${admin.phone}', '${encodeURIComponent(admin.name || '')}', '${admin.role}', '${admin.hostelScope || 'both'}', '${admin.location}', '${encodeURIComponent(admin.email || '')}')" class="px-2.5 py-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition" title="Edit Role & Scope">
-          <i class="fa-solid fa-pen-to-square mr-1 text-[#135B26]"></i>Edit
+          <i class="fa-solid fa-pen-to-square mr-1 text-[#EA580C]"></i>Edit
         </button>
         <button onclick="openDeleteConfirmModal('${admin.phone}', '${encodeURIComponent(admin.name || '')}', '${admin.role}', '${admin.location}')" class="px-2.5 py-1 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition" title="Revoke & Delete">
           <i class="fa-solid fa-trash-can mr-1"></i>Delete
@@ -1100,7 +1100,7 @@ function setAttendanceSubView(view) {
     if (secMonthly) secMonthly.classList.add('hidden');
 
     if (btnDaily) {
-      btnDaily.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-[#135B26] text-white shadow-xs flex items-center gap-2";
+      btnDaily.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-[#EA580C] text-white shadow-xs flex items-center gap-2";
     }
     if (btnMonthly) {
       btnMonthly.className = "px-4 py-2 rounded-xl text-xs font-semibold transition text-[#64748B] hover:text-[#0F172A] flex items-center gap-2";
@@ -1116,7 +1116,7 @@ function setAttendanceSubView(view) {
     if (secMonthly) secMonthly.classList.remove('hidden');
 
     if (btnMonthly) {
-      btnMonthly.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-[#135B26] text-white shadow-xs flex items-center gap-2";
+      btnMonthly.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-[#EA580C] text-white shadow-xs flex items-center gap-2";
     }
     if (btnDaily) {
       btnDaily.className = "px-4 py-2 rounded-xl text-xs font-semibold transition text-[#64748B] hover:text-[#0F172A] flex items-center gap-2";
@@ -1233,7 +1233,7 @@ async function loadAttendanceRecords(forceRefresh = false) {
   const month = Number(monthStr);
   const day = Number(dayStr);
 
-  tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Loading daily attendance (Firebase & TiDB Cloud)...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#EA580C]"></i>Loading daily attendance (Firebase & TiDB Cloud)...</td></tr>`;
 
   try {
     const hostelsToFetch = hostel === 'both' ? ['boys', 'girls'] : [hostel];
@@ -1341,7 +1341,7 @@ function renderDailyAttendanceTable(list) {
     // Lunch Badge
     let lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">Unmarked (-)</span>';
     if (item.l === 'P') {
-      lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Present</span>';
+      lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#FFF7ED] text-[#EA580C] border border-orange-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Present</span>';
     } else if (item.l === 'A') {
       lunchBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-xmark text-[10px]"></i> Absent</span>';
     }
@@ -1349,7 +1349,7 @@ function renderDailyAttendanceTable(list) {
     // Dinner Badge
     let dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-500 border border-slate-200">Unmarked (-)</span>';
     if (item.d === 'P') {
-      dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Present</span>';
+      dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#FFF7ED] text-[#EA580C] border border-orange-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-check text-[10px]"></i> Present</span>';
     } else if (item.d === 'A') {
       dinnerBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 inline-flex items-center gap-1"><i class="fa-solid fa-circle-xmark text-[10px]"></i> Absent</span>';
     }
@@ -1357,7 +1357,7 @@ function renderDailyAttendanceTable(list) {
     // Daily Summary Badge
     let summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">—</span>';
     if (item.l === 'P' && item.d === 'P') {
-      summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1"><i class="fa-solid fa-utensils"></i> Full Day (L+D)</span>';
+      summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-100 text-orange-800 border border-orange-300 inline-flex items-center gap-1"><i class="fa-solid fa-utensils"></i> Full Day (L+D)</span>';
     } else if (item.l === 'P') {
       summaryBadge = '<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 inline-flex items-center gap-1"><i class="fa-solid fa-sun"></i> Lunch Only</span>';
     } else if (item.d === 'P') {
@@ -1369,7 +1369,7 @@ function renderDailyAttendanceTable(list) {
     const hostelTag = isBothScope ? `<span class="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${item.hostel === 'boys' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}">${item.hostel === 'boys' ? 'Boys' : 'Girls'}</span>` : '';
 
     const tr = document.createElement('tr');
-    tr.className = "hover:bg-[#E8F5E9]/25 transition";
+    tr.className = "hover:bg-[#FFF7ED]/25 transition";
     tr.innerHTML = `
       <td class="py-3 px-4 font-mono font-bold text-[#0F172A] whitespace-nowrap">
         ${item.roomNo}
@@ -1399,7 +1399,7 @@ async function loadMonthlyAttendanceRecords(forceRefresh = false) {
   const tbody = document.getElementById('attMonthlyTableBody');
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Aggregating monthly attendance (Firebase & TiDB Cloud) for ${month}/${year}...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#EA580C]"></i>Aggregating monthly attendance (Firebase & TiDB Cloud) for ${month}/${year}...</td></tr>`;
 
   try {
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -1536,8 +1536,8 @@ function renderMonthlyAttendanceTable(list) {
     if (st.totalMarkedDays === 0) {
       rateDisplay = '<span class="text-xs text-slate-400 font-medium italic">No data</span>';
     } else {
-      let barColor = 'bg-[#135B26]';
-      let textColor = 'text-[#135B26]';
+      let barColor = 'bg-[#EA580C]';
+      let textColor = 'text-[#EA580C]';
       if (st.attendanceRate < 50) {
         barColor = 'bg-rose-600';
         textColor = 'text-rose-600';
@@ -1557,7 +1557,7 @@ function renderMonthlyAttendanceTable(list) {
     }
 
     const tr = document.createElement('tr');
-    tr.className = "hover:bg-[#E8F5E9]/25 transition";
+    tr.className = "hover:bg-[#FFF7ED]/25 transition";
     tr.innerHTML = `
       <td class="py-3 px-4 font-mono font-bold text-[#0F172A] whitespace-nowrap">
         ${st.roomNo}
@@ -1565,13 +1565,13 @@ function renderMonthlyAttendanceTable(list) {
       </td>
       <td class="py-3 px-4 font-semibold text-[#0F172A]">${st.name}</td>
       <td class="py-3 px-4 text-center">
-        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-[#E8F5E9] text-[#135B26] border border-emerald-200">${st.lunchPCount}</span>
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-[#FFF7ED] text-[#EA580C] border border-orange-200">${st.lunchPCount}</span>
       </td>
       <td class="py-3 px-4 text-center">
         <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">${st.dinnerPCount}</span>
       </td>
       <td class="py-3 px-4 text-center">
-        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">${st.presentDays} days</span>
+        <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-300">${st.presentDays} days</span>
       </td>
       <td class="py-3 px-4 text-center">
         <span class="px-2 py-0.5 rounded-full text-xs font-bold ${st.absentDays > 0 ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-slate-100 text-slate-500'}">${st.absentDays} days</span>
@@ -1628,12 +1628,12 @@ function renderAuditLogs(logs) {
     // Table row in Audit tab
     if (tbody) {
       const tr = document.createElement('tr');
-      tr.className = "hover:bg-[#E8F5E9]/25 transition";
+      tr.className = "hover:bg-[#FFF7ED]/25 transition";
       tr.innerHTML = `
         <td class="py-3 px-4 font-mono text-[11px] text-[#64748B]">${dateFormatted}</td>
         <td class="py-3 px-4 font-bold text-[#0F172A]">${l.actor}</td>
         <td class="py-3 px-4">
-          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#EFF3FC] text-[#135B26] border border-slate-200">${l.action}</span>
+          <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#EFF3FC] text-[#EA580C] border border-slate-200">${l.action}</span>
         </td>
         <td class="py-3 px-4 text-[#0F172A]">${l.details}</td>
       `;
@@ -1651,7 +1651,7 @@ function renderAuditLogs(logs) {
           <div class="font-semibold text-[#0F172A]">${l.details}</div>
           <div class="text-[10px] text-[#64748B] mt-0.5 font-medium">${new Date(l.timestamp).toLocaleTimeString()} • ${l.actor}</div>
         </div>
-        <span class="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-white text-[#135B26] border border-slate-200 shadow-xs">${l.action}</span>
+        <span class="px-2 py-0.5 text-[9px] font-bold uppercase rounded-full bg-white text-[#EA580C] border border-slate-200 shadow-xs">${l.action}</span>
       `;
       overviewList.appendChild(div);
     });
@@ -1665,12 +1665,12 @@ function showToast(message, type = 'info') {
   if (!container) return;
   const toast = document.createElement('div');
   const colors = {
-    success: 'bg-white border-emerald-300 text-[#135B26] shadow-emerald-900/10',
+    success: 'bg-white border-orange-300 text-[#EA580C] shadow-orange-900/10',
     error: 'bg-white border-red-300 text-red-700 shadow-red-900/10',
     info: 'bg-white border-slate-300 text-[#0F172A] shadow-slate-900/10'
   };
   const icon = {
-    success: 'fa-circle-check text-[#135B26]',
+    success: 'fa-circle-check text-[#EA580C]',
     error: 'fa-circle-xmark text-red-600',
     info: 'fa-circle-info text-blue-600'
   };
