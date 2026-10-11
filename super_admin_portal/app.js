@@ -1307,6 +1307,60 @@ function setAttendanceSubView(view) {
   }
 }
 
+// ==================== TIDB CLOUD ATTENDANCE INTEGRATION ====================
+const RENDER_API_URL = "https://hostel-backend-pdph.onrender.com";
+let tidbAttendanceCache = {};
+
+/**
+ * Fetches historical attendance records from TiDB Cloud via Render Backend API
+ * @param {number} year 
+ * @param {number} month 
+ * @param {string} mode 'boys' | 'girls'
+ * @param {boolean} forceRefresh whether to bypass memory cache
+ * @returns {Promise<Object>} Map of "YYYY-M-D_Room_Name" -> { l, d }
+ */
+async function fetchTiDBAttendance(year, month, mode, forceRefresh = false) {
+  const cacheKey = `${mode}_${year}_${month}`;
+  if (!forceRefresh && tidbAttendanceCache[cacheKey]) {
+    return tidbAttendanceCache[cacheKey];
+  }
+  try {
+    const res = await fetch(`${RENDER_API_URL}/attendance-history?year=${year}&month=${month}&mode=${mode}`, {
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!res.ok) {
+      console.warn(`[TiDB API] Server returned status ${res.status} for ${cacheKey}`);
+      return {};
+    }
+    const json = await res.json();
+    const map = {};
+    if (json && json.success && Array.isArray(json.data)) {
+      json.data.forEach(item => {
+        if (!item.attendance_date) return;
+        const dStr = String(item.attendance_date).split('T')[0];
+        const [yStr, mStr, dStrPart] = dStr.split('-');
+        const y = Number(yStr);
+        const m = Number(mStr);
+        const d = Number(dStrPart);
+        const room = String(item.room_no || '').trim();
+        const name = String(item.student_name || '').trim();
+        
+        const key = `${y}-${m}-${d}_${room}_${name}`;
+        map[key] = {
+          l: item.lunch_status || '',
+          d: item.dinner_status || ''
+        };
+      });
+      console.log(`[TiDB API] Loaded ${json.data.length} historical records for ${cacheKey}`);
+    }
+    tidbAttendanceCache[cacheKey] = map;
+    return map;
+  } catch (err) {
+    console.warn(`[TiDB API] Network error loading history for ${cacheKey}:`, err);
+    return {};
+  }
+}
+
 // Attendance Record lookup helper to handle both padded and unpadded date keys
 function getStudentAttRecord(attMap, year, month, day, roomNo, studentName) {
   if (!attMap) return null;
@@ -1335,7 +1389,7 @@ function getStudentAttRecord(attMap, year, month, day, roomNo, studentName) {
 
 // --- DAILY ATTENDANCE ---
 
-async function loadAttendanceRecords() {
+async function loadAttendanceRecords(forceRefresh = false) {
   const dateInput = document.getElementById('attFilterDate');
   const date = dateInput ? dateInput.value : '';
   let hostel = document.getElementById('attFilterHostel')?.value || 'both';
@@ -1352,7 +1406,7 @@ async function loadAttendanceRecords() {
   const month = Number(monthStr);
   const day = Number(dayStr);
 
-  tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Loading daily attendance...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Loading daily attendance (Firebase & TiDB Cloud)...</td></tr>`;
 
   try {
     const hostelsToFetch = hostel === 'both' ? ['boys', 'girls'] : [hostel];
@@ -1369,8 +1423,15 @@ async function loadAttendanceRecords() {
         }
       });
 
+      // 1. Fetch live attendance from Firebase
       const snapAtt = await db.ref(`hostelData_${h}/attendance`).get();
-      combinedAttMaps[h] = snapAtt.val() || {};
+      const fbAtt = snapAtt.val() || {};
+
+      // 2. Fetch historical archived attendance from TiDB Cloud via Render API
+      const tidbAtt = await fetchTiDBAttendance(year, month, h, forceRefresh);
+
+      // 3. Merge: Firebase has highest priority for live day, TiDB supplies archive
+      combinedAttMaps[h] = { ...tidbAtt, ...fbAtt };
     }
 
     // Sort room number numerically
@@ -1498,7 +1559,7 @@ function renderDailyAttendanceTable(list) {
 
 // --- MONTHLY ATTENDANCE ---
 
-async function loadMonthlyAttendanceRecords() {
+async function loadMonthlyAttendanceRecords(forceRefresh = false) {
   const monthSelect = document.getElementById('attMonthlyMonth');
   const yearSelect = document.getElementById('attMonthlyYear');
   const month = Number(monthSelect ? monthSelect.value : (new Date().getMonth() + 1));
@@ -1511,7 +1572,7 @@ async function loadMonthlyAttendanceRecords() {
   const tbody = document.getElementById('attMonthlyTableBody');
   if (!tbody) return;
 
-  tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Aggregating monthly attendance for ${month}/${year}...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-[#64748B] italic"><i class="fa-solid fa-spinner animate-spin mr-2 text-[#135B26]"></i>Aggregating monthly attendance (Firebase & TiDB Cloud) for ${month}/${year}...</td></tr>`;
 
   try {
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -1529,8 +1590,15 @@ async function loadMonthlyAttendanceRecords() {
         }
       });
 
+      // 1. Fetch live attendance from Firebase
       const snapAtt = await db.ref(`hostelData_${h}/attendance`).get();
-      combinedAttMaps[h] = snapAtt.val() || {};
+      const fbAtt = snapAtt.val() || {};
+
+      // 2. Fetch historical archived attendance from TiDB Cloud via Render API
+      const tidbAtt = await fetchTiDBAttendance(year, month, h, forceRefresh);
+
+      // 3. Merge: Firebase has highest priority for live day, TiDB supplies archive
+      combinedAttMaps[h] = { ...tidbAtt, ...fbAtt };
     }
 
     combinedStudents.sort((a, b) => {
