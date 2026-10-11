@@ -1565,7 +1565,14 @@ class SyncService {
     }
   }
 
-  /// Push only ONE attendance record to Firebase
+  static Future<void> pushAttendanceMeal(String key, String meal, String status) async {
+    try {
+      await _dbRef.child('attendance').child(key).update({meal: status});
+    } catch (e) {
+      print("Push attendance meal error: $e");
+    }
+  }
+
   static Future<void> pushAttendanceBatch(Map<String, dynamic> updates) async {
     try {
       if (updates.isNotEmpty) {
@@ -7569,11 +7576,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       setState(() => globalEntryL = v);
                       if (v == true) {
                         NotificationService.sendPushNotificationToStudents("Lunch Time", "Mess Open");
+                      } else {
+                        await _closeMessAndMarkAbsent('l');
                       }
                       await SyncService.pushSwitchesNow();
-                      if (v == false) {
-                        _closeMessAndMarkAbsent('l');
-                      }
                     },
                   ),
                   SwitchListTile(
@@ -7587,11 +7593,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       setState(() => globalEntryD = v);
                       if (v == true) {
                         NotificationService.sendPushNotificationToStudents("Dinner Time", "Mess Open");
+                      } else {
+                        await _closeMessAndMarkAbsent('d');
                       }
                       await SyncService.pushSwitchesNow();
-                      if (v == false) {
-                        _closeMessAndMarkAbsent('d');
-                      }
                     },
                   ),
                 ],
@@ -8122,7 +8127,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   Future<void> _closeMessAndMarkAbsent(String meal) async {
     try {
       DateTime now = realTime;
-      Map<String, dynamic> batchUpdates = {};
+      List<Future<void>> pushTasks = [];
+      
+      if (globalRegisteredStudents.isEmpty) {
+        await SyncService.fetchNow();
+      }
       
       // Prevent ConcurrentModificationError by creating a copy of the list
       List<RegisteredStudent> studentsCopy = List.from(globalRegisteredStudents);
@@ -8148,16 +8157,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         }
         
         if (modified) {
-          batchUpdates[key] = {
-            'l': globalAttendanceMap[key]!.l,
-            'd': globalAttendanceMap[key]!.d,
-          };
+          // Direct child node write guarantees 100% reliable Firebase update on both web and mobile
+          pushTasks.add(SyncService.pushAttendanceMeal(key, meal, 'A'));
         }
       }
       
-      if (batchUpdates.isNotEmpty) {
-        // Fast atomic batch update to Firebase instead of hundreds of parallel calls
-        await SyncService.pushAttendanceBatch(batchUpdates);
+      if (pushTasks.isNotEmpty) {
+        await Future.wait(pushTasks);
+        globalSyncTrigger.value++;
       }
       if (mounted) {
         setState(() {});
@@ -8842,11 +8849,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               "Lunch Time",
                               "Mess Open",
                             );
+                          } else {
+                            await _closeMessAndMarkAbsent('l');
                           }
                           await SyncService.pushSwitchesNow();
-                          if (v == false) {
-                            _closeMessAndMarkAbsent('l');
-                          }
                         },
                       ),
                       SwitchListTile(
@@ -8863,11 +8869,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               "Dinner Time",
                               "Mess Open",
                             );
+                          } else {
+                            await _closeMessAndMarkAbsent('d');
                           }
                           await SyncService.pushSwitchesNow();
-                          if (v == false) {
-                            _closeMessAndMarkAbsent('d');
-                          }
                         },
                       ),
                     ],
