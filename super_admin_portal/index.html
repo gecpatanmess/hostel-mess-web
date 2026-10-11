@@ -104,17 +104,17 @@
       <div class="mt-5 pt-3.5 border-t border-slate-100 text-center">
         <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Developed by</span>
         <div class="bg-[#090D16] py-1.5 px-3.5 rounded-xl inline-block border border-slate-800 shadow-sm">
-          <img src="mdhk_logo.png" alt="MDHK Tensors" class="h-6 object-contain mx-auto">
+          <img src="mdhk_logo.png?v=2" alt="MDHK Tensors" class="h-6 sm:h-7 object-contain mx-auto" style="image-rendering: -webkit-optimize-contrast;">
         </div>
       </div>
     </div>
   </div>
 
   <!-- ==================== MAIN CONSOLE DASHBOARD ==================== -->
-  <div id="mainDashboard" class="hidden min-h-screen flex flex-col">
+  <div id="mainDashboard" class="hidden h-screen max-h-screen flex flex-col overflow-hidden">
     
     <!-- TOP APPBAR (Responsive & Mobile-Optimized) -->
-    <header class="bg-gradient-to-r from-[#135B26] via-[#166D2E] to-[#135B26] text-white sticky top-0 z-40 shadow-md">
+    <header class="bg-gradient-to-r from-[#135B26] via-[#166D2E] to-[#135B26] text-white shrink-0 sticky top-0 z-40 shadow-md">
       <!-- Main Top Bar Row -->
       <div class="px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -193,67 +193,71 @@
       </nav>
     </header>
 
-    <div class="flex-1 flex overflow-hidden relative">
+    <div class="flex-1 flex overflow-hidden relative min-h-0">
       <!-- MOBILE SIDEBAR BACKDROP OVERLAY -->
       <div id="sidebarBackdrop" onclick="closeMobileSidebar()" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden lg:hidden transition-opacity"></div>
 
       <!-- SIDEBAR NAVIGATION (Desktop: Static left sidebar / Mobile: Off-canvas drawer) -->
-      <aside id="mainSidebar" class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-white border-r border-slate-200/90 flex flex-col p-3.5 space-y-1 select-none shadow-2xl transform -translate-x-full transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:w-64 lg:shadow-sm overflow-y-auto">
+      <aside id="mainSidebar" class="fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-white border-r border-slate-200/90 flex flex-col justify-between p-3.5 select-none shadow-2xl transform -translate-x-full transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 lg:w-64 lg:h-full lg:shadow-sm overflow-hidden">
         
-        <!-- Mobile Sidebar Close Header -->
-        <div class="flex items-center justify-between px-3 py-2 border-b border-slate-100 lg:border-none lg:p-0 mb-1">
-          <div class="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Control Panel</div>
-          <button onclick="closeMobileSidebar()" class="lg:hidden text-slate-400 hover:text-slate-700 p-1">
-            <i class="fa-solid fa-xmark text-base"></i>
+        <!-- TOP SECTION: Navigation Tabs -->
+        <div class="flex-1 flex flex-col space-y-1 overflow-y-auto no-scrollbar min-h-0 pr-0.5">
+          <!-- Mobile Sidebar Close Header -->
+          <div class="flex items-center justify-between px-3 py-2 border-b border-slate-100 lg:border-none lg:p-0 mb-1">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Control Panel</div>
+            <button onclick="closeMobileSidebar()" class="lg:hidden text-slate-400 hover:text-slate-700 p-1">
+              <i class="fa-solid fa-xmark text-base"></i>
+            </button>
+          </div>
+
+          <button data-tab="tabOverview" class="nav-btn active flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-left">
+            <i class="fa-solid fa-chart-pie w-5 text-center text-[#135B26]"></i>
+            <span>Dashboard Overview</span>
+          </button>
+
+          <button data-tab="tabRoles" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+            <i class="fa-solid fa-users-gear w-5 text-center text-teal-600"></i>
+            <span>Roles & Toggles (RBAC)</span>
+          </button>
+
+          <button data-tab="tabAdmins" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+            <i class="fa-solid fa-user-shield w-5 text-center text-blue-600"></i>
+            <span>Staff & Committee</span>
+          </button>
+
+          <button data-tab="tabAttendance" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+            <i class="fa-solid fa-calendar-check w-5 text-center text-purple-600"></i>
+            <span>Live Attendance</span>
+          </button>
+
+          <button data-tab="tabAudit" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
+            <i class="fa-solid fa-shield-cat w-5 text-center text-rose-600"></i>
+            <span>Security Audit Trail</span>
           </button>
         </div>
 
-        <button data-tab="tabOverview" class="nav-btn active flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-left">
-          <i class="fa-solid fa-chart-pie w-5 text-center text-[#135B26]"></i>
-          <span>Dashboard Overview</span>
-        </button>
-
-        <button data-tab="tabRoles" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
-          <i class="fa-solid fa-users-gear w-5 text-center text-teal-600"></i>
-          <span>Roles & Toggles (RBAC)</span>
-        </button>
-
-        <button data-tab="tabAdmins" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
-          <i class="fa-solid fa-user-shield w-5 text-center text-blue-600"></i>
-          <span>Staff & Committee</span>
-        </button>
-
-        <button data-tab="tabAttendance" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
-          <i class="fa-solid fa-calendar-check w-5 text-center text-purple-600"></i>
-          <span>Live Attendance</span>
-        </button>
-
-        <button data-tab="tabAudit" class="nav-btn flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-left">
-          <i class="fa-solid fa-shield-cat w-5 text-center text-rose-600"></i>
-          <span>Security Audit Trail</span>
-        </button>
-
-        <!-- Current User Info Card -->
-        <div class="pt-3.5 mt-auto border-t border-slate-200/80 p-2.5 bg-[#F6F8FC] rounded-2xl">
-          <div class="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Super Admin:</div>
-          <div class="text-xs font-bold text-[#0F172A] flex items-center gap-2 mt-0.5">
-            <span class="w-2.5 h-2.5 rounded-full bg-[#135B26]"></span>
-            <span id="currentSuperAdminUser">superadmin</span>
+        <!-- BOTTOM PINNED SECTION: Always anchored at the absolute bottom of navigation bar -->
+        <div class="shrink-0 pt-3 border-t border-slate-200/80 space-y-2 mt-auto">
+          <!-- Current User Info Card -->
+          <div class="p-2.5 bg-[#F6F8FC] rounded-2xl border border-slate-200/60">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Super Admin:</div>
+            <div class="text-xs font-bold text-[#0F172A] flex items-center gap-2 mt-0.5">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#135B26]"></span>
+              <span id="currentSuperAdminUser">superadmin</span>
+            </div>
+            <div class="text-[10px] text-emerald-800 font-semibold mt-1 flex items-center gap-1">
+              <i class="fa-solid fa-lock text-[9px]"></i>
+              <span>Setup Permanently Locked</span>
+            </div>
           </div>
-          <div class="text-[10px] text-emerald-800 font-semibold mt-1 flex items-center gap-1">
-            <i class="fa-solid fa-lock text-[9px]"></i>
-            <span>Setup Permanently Locked</span>
-          </div>
-        </div>
 
-        <!-- Developed By MDHK Tensors Branding Badge -->
-        <div class="pt-1.5">
+          <!-- Developed By MDHK Tensors Branding Badge -->
           <div class="p-2.5 rounded-2xl bg-[#090D16] border border-slate-800/90 shadow-md text-center overflow-hidden">
             <div class="text-[9px] font-extrabold uppercase tracking-widest text-amber-500/90 mb-1 flex items-center justify-center gap-1">
               <i class="fa-solid fa-code text-[8px]"></i>
               <span>Developed By</span>
             </div>
-            <img src="mdhk_logo.png" alt="MDHK Tensors" class="w-full h-auto max-h-12 object-contain mx-auto rounded-lg">
+            <img src="mdhk_logo.png?v=2" alt="MDHK Tensors" class="w-full h-auto max-h-12 object-contain mx-auto rounded-lg" style="image-rendering: -webkit-optimize-contrast;">
           </div>
         </div>
       </aside>
