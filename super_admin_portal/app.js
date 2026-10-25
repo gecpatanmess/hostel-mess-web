@@ -324,6 +324,7 @@ function initAppListeners() {
   listenToAdmins();
   listenToStudents();
   listenToAuditLogs();
+  listenToMaintenanceMode();
   setScope(currentScope);
 }
 
@@ -332,6 +333,7 @@ function refreshAllData() {
   listenToAdmins();
   listenToStudents();
   listenToAuditLogs();
+  listenToMaintenanceMode();
   showToast('Real-time data refreshed from Firebase.', 'success');
 }
 
@@ -1688,5 +1690,179 @@ function showToast(message, type = 'info') {
 
 // Start application
 window.addEventListener('DOMContentLoaded', () => {
+  listenToMaintenanceMode();
   checkAuthStatus();
 });
+
+
+// ==================== UNDER CONSTRUCTION / MAINTENANCE MODE ====================
+
+let isMaintenanceActive = false;
+let currentMaintenanceConfig = {
+  active: false,
+  title: "🚧 NOTICE: APP UNDER CONSTRUCTION 🚧",
+  message: "🚧 NOTICE: APP UNDER CONSTRUCTION 🚧\n\nDear Students & Staff,\n\nThe Hostel Mess Application is currently under construction and undergoing maintenance for important updates and improvements.\n\nThe application will resume full continuous operations after the Diwali vacation. Please wait until then.\n\nNote: All your student profile information, room details, and attendance records are completely safe and preserved.\n\nThank you for your patience and understanding!"
+};
+
+const DEFAULT_MAINTENANCE_TEXT = "🚧 NOTICE: APP UNDER CONSTRUCTION 🚧\n\nDear Students & Staff,\n\nThe Hostel Mess Application is currently under construction and undergoing maintenance for important updates and improvements.\n\nThe application will resume full continuous operations after the Diwali vacation. Please wait until then.\n\nNote: All your student profile information, room details, and attendance records are completely safe and preserved.\n\nThank you for your patience and understanding!";
+
+function listenToMaintenanceMode() {
+  db.ref('system_config/maintenance').on('value', snap => {
+    const val = snap.val();
+    if (val && val.active !== undefined) {
+      isMaintenanceActive = !!val.active;
+      currentMaintenanceConfig = {
+        active: isMaintenanceActive,
+        title: val.title || "🚧 NOTICE: APP UNDER CONSTRUCTION 🚧",
+        message: val.message || DEFAULT_MAINTENANCE_TEXT,
+        updated_at: val.updated_at,
+        updated_by: val.updated_by
+      };
+    } else {
+      isMaintenanceActive = false;
+      currentMaintenanceConfig.active = false;
+    }
+    updateMaintenanceUI();
+  });
+}
+
+function updateMaintenanceUI() {
+  // 1. Update Navbar button
+  const navBtn = document.getElementById('btnMaintenanceNav');
+  const navDot = document.getElementById('navMaintenanceDot');
+  const navLabel = document.getElementById('navMaintenanceLabel');
+  const navLabelMobile = document.getElementById('navMaintenanceLabelMobile');
+
+  if (navBtn) {
+    if (isMaintenanceActive) {
+      navBtn.className = "px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-md border bg-amber-500 hover:bg-amber-600 text-slate-900 border-amber-300 animate-pulse";
+      if (navDot) navDot.className = "w-2 h-2 rounded-full bg-red-600";
+      if (navLabel) navLabel.textContent = "Under Construction: ON";
+      if (navLabelMobile) navLabelMobile.textContent = "Maint: ON";
+    } else {
+      navBtn.className = "px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs border bg-emerald-600/90 hover:bg-emerald-600 text-white border-emerald-400/40";
+      if (navDot) navDot.className = "w-2 h-2 rounded-full bg-emerald-300";
+      if (navLabel) navLabel.textContent = "App Status: LIVE";
+      if (navLabelMobile) navLabelMobile.textContent = "App: Live";
+    }
+  }
+
+  // 2. Update Overview Card
+  const badge = document.getElementById('badgeMaintenanceStatus');
+  const cardBtn = document.getElementById('btnToggleMaintenanceCard');
+  const cardBtnText = document.getElementById('btnToggleMaintenanceCardText');
+  const preview = document.getElementById('maintenanceMessagePreview');
+
+  if (badge) {
+    if (isMaintenanceActive) {
+      badge.className = "px-2.5 py-0.5 text-[11px] font-extrabold rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1";
+      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-600 animate-ping"></span> 🚧 Under Construction ACTIVE';
+    } else {
+      badge.className = "px-2.5 py-0.5 text-[11px] font-extrabold rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1";
+      badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span> 🟢 App is Normal (Live)';
+    }
+  }
+
+  if (cardBtn && cardBtnText) {
+    if (isMaintenanceActive) {
+      cardBtn.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 shadow-sm bg-red-600 hover:bg-red-700 text-white";
+      cardBtnText.textContent = "Turn OFF (Resume App)";
+    } else {
+      cardBtn.className = "px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 shadow-sm bg-amber-500 hover:bg-amber-600 text-slate-900";
+      cardBtnText.textContent = "Turn ON Under Construction";
+    }
+  }
+
+  if (preview) {
+    preview.textContent = currentMaintenanceConfig.message || DEFAULT_MAINTENANCE_TEXT;
+  }
+}
+
+function openMaintenanceModal() {
+  const modal = document.getElementById('modalMaintenance');
+  const banner = document.getElementById('modalMaintenanceBanner');
+  const textInput = document.getElementById('modalMaintenanceNoticeText');
+  const btnAction = document.getElementById('btnModalMaintenanceAction');
+  if (!modal) return;
+
+  if (isMaintenanceActive) {
+    banner.className = "p-3.5 rounded-xl border bg-red-50 border-red-200 text-red-900 text-xs leading-relaxed";
+    banner.innerHTML = "<strong>🚧 Currently ACTIVE:</strong> Maintenance mode is currently ON across all student dashboards.<br>Clicking <strong>Turn OFF</strong> will remove the notice and restore normal meal entry operations.";
+    btnAction.className = "px-5 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl transition shadow-xs";
+    btnAction.textContent = "Turn OFF Under Construction";
+  } else {
+    banner.className = "p-3.5 rounded-xl border bg-amber-50 border-amber-200 text-amber-900 text-xs leading-relaxed";
+    banner.innerHTML = "<strong>🚧 Currently NORMAL (LIVE):</strong> Turning this ON will instantly display the English notice on all student & staff dashboards without requiring any APK update.<br>Meal entries will be safely locked so no swipes occur during changes.";
+    btnAction.className = "px-5 py-2 text-xs font-bold text-slate-900 bg-amber-500 hover:bg-amber-600 rounded-xl transition shadow-xs";
+    btnAction.textContent = "Turn ON Under Construction";
+  }
+
+  if (textInput) {
+    textInput.value = currentMaintenanceConfig.message || DEFAULT_MAINTENANCE_TEXT;
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeMaintenanceModal() {
+  const modal = document.getElementById('modalMaintenance');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitMaintenanceToggle() {
+  const textInput = document.getElementById('modalMaintenanceNoticeText');
+  const message = (textInput && textInput.value ? textInput.value : DEFAULT_MAINTENANCE_TEXT).trim();
+  const willTurnOn = !isMaintenanceActive;
+
+  closeMaintenanceModal();
+
+  try {
+    if (willTurnOn) {
+      const pollData = {
+        question: message,
+        options: ["Understood 👍"],
+        startTime: 0,
+        endTime: 4102444800000,
+        isActive: true,
+        votes: {}
+      };
+
+      // 1. Set poll in hostelData_boys and hostelData_girls
+      await db.ref('hostelData_boys/dynamic_polls/maintenance_notice').set(pollData);
+      await db.ref('hostelData_girls/dynamic_polls/maintenance_notice').set(pollData);
+
+      // 2. Lock switches
+      await db.ref('hostelData_boys/switches').set({ globalEntryL: false, globalEntryD: false });
+      await db.ref('hostelData_girls/switches').set({ globalEntryL: false, globalEntryD: false });
+
+      // 3. Update system_config/maintenance
+      await db.ref('system_config/maintenance').set({
+        active: true,
+        title: "🚧 NOTICE: APP UNDER CONSTRUCTION 🚧",
+        message: message,
+        updated_at: new Date().toISOString(),
+        updated_by: currentSessionUser || "Super Admin"
+      });
+
+      logAudit("MAINTENANCE_MODE_ON", "Super Admin activated Under Construction mode for all hostels.");
+      showToast("Under Construction Mode ACTIVATED! English notice is now live on all student apps.", "success");
+    } else {
+      // 1. Remove poll from hostelData_boys and hostelData_girls
+      await db.ref('hostelData_boys/dynamic_polls/maintenance_notice').remove();
+      await db.ref('hostelData_girls/dynamic_polls/maintenance_notice').remove();
+
+      // 2. Update system_config/maintenance
+      await db.ref('system_config/maintenance').set({
+        active: false,
+        updated_at: new Date().toISOString(),
+        updated_by: currentSessionUser || "Super Admin"
+      });
+
+      logAudit("MAINTENANCE_MODE_OFF", "Super Admin deactivated Under Construction mode.");
+      showToast("Under Construction Mode DEACTIVATED. App is now live in normal mode.", "success");
+    }
+  } catch (err) {
+    console.error("Maintenance toggle error:", err);
+    showToast("Error updating maintenance status: " + err.message, "error");
+  }
+}

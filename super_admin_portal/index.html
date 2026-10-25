@@ -156,6 +156,14 @@
             <span>Lock: <strong id="sessionTimerText" class="text-white font-mono">15:00</strong></span>
           </div>
 
+          <!-- Maintenance / Under Construction Quick Navbar Button -->
+          <button id="btnMaintenanceNav" onclick="openMaintenanceModal()" class="px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition flex items-center gap-1.5 shadow-xs border bg-amber-500 hover:bg-amber-600 text-slate-900 border-amber-300 animate-pulse" title="Toggle Under Construction Mode">
+            <span id="navMaintenanceDot" class="w-2 h-2 rounded-full bg-red-600"></span>
+            <i class="fa-solid fa-person-digging text-xs"></i>
+            <span id="navMaintenanceLabel" class="hidden sm:inline">Under Construction: ON</span>
+            <span id="navMaintenanceLabelMobile" class="sm:hidden">Maintenance: ON</span>
+          </button>
+
           <!-- Hostel Scope Selector (Ultra-Compact on Mobile) -->
           <div class="flex items-center bg-black/25 border border-white/15 rounded-xl p-0.5 text-[11px] sm:text-xs font-semibold">
             <button id="scopeAll" onclick="setScope('all')" class="px-2 sm:px-2.5 py-1 rounded-lg transition bg-white text-[#EA580C] shadow-xs">Both</button>
@@ -280,6 +288,49 @@
               <span class="hidden sm:inline">Refresh Data</span>
               <span class="sm:hidden">Refresh</span>
             </button>
+          </div>
+
+          <!-- ==================== APP UNDER CONSTRUCTION / MAINTENANCE CARD ==================== -->
+          <div id="cardMaintenanceMode" class="bg-gradient-to-br from-amber-50 via-white to-orange-50 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div class="flex items-start gap-3">
+                <div id="maintenanceIconBox" class="w-10 h-10 rounded-xl bg-amber-500 text-slate-900 flex items-center justify-center shrink-0 shadow-sm text-lg">
+                  <i class="fa-solid fa-person-digging"></i>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <h3 class="text-base sm:text-lg font-bold text-slate-900">App Under Construction Control</h3>
+                    <span id="badgeMaintenanceStatus" class="px-2.5 py-0.5 text-[11px] font-extrabold rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                      🚧 Under Construction ACTIVE
+                    </span>
+                  </div>
+                  <p class="text-xs text-slate-600 mt-0.5">
+                    Controls whether students and staff see the English maintenance notice on opening the app. No APK update required.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                <button id="btnToggleMaintenanceCard" onclick="openMaintenanceModal()" class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition flex items-center gap-2 shadow-sm bg-red-600 hover:bg-red-700 text-white">
+                  <i class="fa-solid fa-power-off"></i>
+                  <span id="btnToggleMaintenanceCardText">Turn OFF (Resume App)</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Notice details preview -->
+            <div id="maintenanceDetailsBox" class="mt-4 pt-3 border-t border-amber-200">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1.5">
+                <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <i class="fa-solid fa-bullhorn text-amber-600"></i>
+                  Active English Notice on Student Dashboards:
+                </span>
+                <span class="text-[11px] text-emerald-700 font-semibold flex items-center gap-1">
+                  <i class="fa-solid fa-shield-halved"></i> Safe Mode: All 322 student profiles & records remain 100% intact
+                </span>
+              </div>
+              <div id="maintenanceMessagePreview" class="p-3 bg-white border border-amber-200 rounded-xl text-xs text-slate-800 leading-relaxed font-mono whitespace-pre-line shadow-inner"></div>
+            </div>
           </div>
 
           <!-- Stats Cards (2-cols on mobile, 4-cols on lg screens) -->
@@ -878,6 +929,52 @@
       <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
         <button onclick="closeEditAdminModal()" class="px-4 py-2 text-xs font-semibold text-[#64748B] hover:text-[#0F172A] transition">Cancel</button>
         <button onclick="submitEditAdmin()" class="px-5 py-2 bg-[#EA580C] hover:bg-[#C2410C] text-white text-xs font-bold rounded-xl transition shadow-sm">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: MAINTENANCE / UNDER CONSTRUCTION TOGGLE ==================== -->
+  <div id="modalMaintenance" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 sm:p-4">
+    <div class="w-full max-w-lg bg-white border border-slate-200 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+            <i class="fa-solid fa-person-digging text-base"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm sm:text-base text-slate-900">App Under Construction Control</h3>
+            <p class="text-[11px] text-slate-500">Enable or disable maintenance mode across both hostels</p>
+          </div>
+        </div>
+        <button onclick="closeMaintenanceModal()" class="text-slate-400 hover:text-slate-600 text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3">
+        <div id="modalMaintenanceBanner" class="p-3.5 rounded-xl border text-xs leading-relaxed">
+          <!-- Dynamic text injected by JS -->
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">
+            English Notice Text (Shown on App Open to Students & Staff):
+          </label>
+          <textarea id="modalMaintenanceNoticeText" rows="6" class="w-full text-xs font-mono p-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#EA580C] focus:outline-none" placeholder="Enter notice message..."></textarea>
+          <p class="text-[10px] text-slate-500 mt-1">This text appears immediately at the top of the student dashboard.</p>
+        </div>
+
+        <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5 text-emerald-800 text-xs">
+          <i class="fa-solid fa-circle-check text-emerald-600 text-sm shrink-0"></i>
+          <span>Zero APK update required. Student rooms, PINs, and attendance history remain 100% preserved.</span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button onclick="closeMaintenanceModal()" class="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 transition">Cancel</button>
+        <button id="btnModalMaintenanceAction" onclick="submitMaintenanceToggle()" class="px-5 py-2 text-xs font-bold text-white rounded-xl transition shadow-xs">
+          Confirm
+        </button>
       </div>
     </div>
   </div>
