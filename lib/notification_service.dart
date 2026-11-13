@@ -7,6 +7,15 @@ import 'package:dio/dio.dart';
 import 'badge_helper.dart';
 
 class NotificationService {
+  // =========================================================================
+  // 🔔 MASTER NOTIFICATION TOGGLE (નોટિફિકેશન સ્વીચ)
+  // -------------------------------------------------------------------------
+  // false = 🛑 ટેસ્ટિંગ મોડ: કોઈપણ વિદ્યાર્થી કે એડમિનને કોઈ મેસેજ/નોટિફિકેશન જશે નહીં.
+  // true  = 🟢 લાઈવ મોડ: બધી નોટિફિકેશન રાબેતા મુજબ ચાલુ થઈ જશે.
+  // (ફરી ચાલુ કરવા માટે નીચેની લાઈનમાં false ની જગ્યાએ true કરી દેવું)
+  // =========================================================================
+  static const bool notificationsEnabled = false;
+
   static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   static Future<void> saveToken() async {
@@ -96,6 +105,10 @@ class NotificationService {
   }
 
   static Future<void> sendPushNotificationToStudents(String title, String body) async {
+    if (!notificationsEnabled) {
+      print("[TESTING MODE] Push notification blocked (Students): $title - $body");
+      return;
+    }
     try {
       // 1. Get all student tokens
       List<String> tokens = [];
@@ -150,6 +163,10 @@ class NotificationService {
   }
 
   static Future<void> sendPushNotificationToAdmins(String title, String body) async {
+    if (!notificationsEnabled) {
+      print("[TESTING MODE] Push notification blocked (Admins): $title - $body");
+      return;
+    }
     try {
       // 1. Get all admin tokens
       List<String> tokens = [];
@@ -185,6 +202,10 @@ class NotificationService {
   }
 
   static Future<void> sendPushNotificationToSpecificStudents(List<String> studentNames, String title, String body) async {
+    if (!notificationsEnabled) {
+      print("[TESTING MODE] Push notification blocked (Specific Students): $title - $body");
+      return;
+    }
     try {
       List<String> tokens = [];
       final snap = await FirebaseDatabase.instance.ref('hostelData_${globalHostelMode}/students').get();

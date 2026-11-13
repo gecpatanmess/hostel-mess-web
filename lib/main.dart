@@ -22,6 +22,9 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:dio/dio.dart'; // For OTP/Email verification API calls
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 const String RENDER_API_URL = "https://hostel-backend-pdph.onrender.com";
 Map<String, DailyRecord> globalApiAttendanceMap = {};
@@ -56,37 +59,46 @@ Future<void> fetchAttendanceMonth(int year, int month) async {
   }
 }
 
+String attendanceSafeKey(String key) => key.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+
 DailyRecord? getAttendanceMerged(String key) {
+  String safeKey = attendanceSafeKey(key);
   DateTime now = realTime;
   String todayPrefix = "${now.year}-${now.month}-${now.day}_";
-  if (key.startsWith(todayPrefix)) {
-    return globalAttendanceMap[key];
+  if (safeKey.startsWith(todayPrefix) || key.startsWith(todayPrefix)) {
+    return globalAttendanceMap[safeKey] ?? globalAttendanceMap[key];
   }
-  return globalApiAttendanceMap[key] ?? globalAttendanceMap[key];
+  return globalApiAttendanceMap[safeKey] ??
+      globalApiAttendanceMap[key] ??
+      globalAttendanceMap[safeKey] ??
+      globalAttendanceMap[key];
 }
 
 void forEachMergedAttendance(
   void Function(String key, DailyRecord rec) action,
 ) {
   Set<String> processed = {};
+  DateTime now = realTime;
+  String todayPrefix = "${now.year}-${now.month}-${now.day}_";
   globalAttendanceMap.forEach((key, rec) {
-    DateTime now = realTime;
-    String todayPrefix = "${now.year}-${now.month}-${now.day}_";
-    if (key.startsWith(todayPrefix)) {
-      action(key, rec);
-      processed.add(key);
+    String safeK = attendanceSafeKey(key);
+    if ((safeK.startsWith(todayPrefix) || key.startsWith(todayPrefix)) && !processed.contains(safeK)) {
+      processed.add(safeK);
+      action(safeK, rec);
     }
   });
   globalApiAttendanceMap.forEach((key, rec) {
-    if (!processed.contains(key)) {
-      action(key, rec);
-      processed.add(key);
+    String safeK = attendanceSafeKey(key);
+    if (!processed.contains(safeK)) {
+      processed.add(safeK);
+      action(safeK, rec);
     }
   });
   globalAttendanceMap.forEach((key, rec) {
-    if (!processed.contains(key)) {
-      action(key, rec);
-      processed.add(key);
+    String safeK = attendanceSafeKey(key);
+    if (!processed.contains(safeK)) {
+      processed.add(safeK);
+      action(safeK, rec);
     }
   });
 }
@@ -779,6 +791,14 @@ Future<void> saveAdminHiddenComplaints() async {
 }
 
 Set<String> globalAdminHiddenNotices = {};
+Set<String> globalAdminDismissedDues = {};
+Future<void> saveAdminDismissedDues() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setStringList(
+    'adminDismissedDues',
+    globalAdminDismissedDues.toList(),
+  );
+}
 const Map<int, Map<String, String>> defaultWeeklyMenu = {
   DateTime.monday: {
     'breakfast': 'ચા, કોફી અને પૌંઆ',
@@ -1176,6 +1196,41 @@ void handleForceLogout() async {
 
 bool globalEntryL = false;
 bool globalEntryD = false;
+int globalLunchCloseHour = 14;
+int globalLunchCloseMinute = 30;
+int globalDinnerCloseHour = 21;
+int globalDinnerCloseMinute = 30;
+String globalLunchOpenedDate = '';
+String globalDinnerOpenedDate = '';
+
+bool isPastLunchCloseTime() {
+  final now = realTime;
+  final todayStr = "${now.year}-${now.month}-${now.day}";
+  if (globalLunchOpenedDate.isNotEmpty && globalLunchOpenedDate != todayStr) {
+    return true;
+  }
+  if (now.hour > globalLunchCloseHour) return true;
+  if (now.hour == globalLunchCloseHour && now.minute >= globalLunchCloseMinute) return true;
+  return false;
+}
+
+bool isPastDinnerCloseTime() {
+  final now = realTime;
+  final todayStr = "${now.year}-${now.month}-${now.day}";
+  if (globalDinnerOpenedDate.isNotEmpty && globalDinnerOpenedDate != todayStr) {
+    return true;
+  }
+  if (now.hour > globalDinnerCloseHour) return true;
+  if (now.hour == globalDinnerCloseHour && now.minute >= globalDinnerCloseMinute) return true;
+  return false;
+}
+
+String formatTimeOfDay(int hour, int minute) {
+  final period = hour >= 12 ? 'PM' : 'AM';
+  final h = hour % 12 == 0 ? 12 : hour % 12;
+  final m = minute.toString().padLeft(2, '0');
+  return "$h:$m $period";
+}
 
 class DynamicPoll {
   String id;
@@ -1232,8 +1287,129 @@ class DynamicPoll {
 class DailyRecord {
   String l = '';
   String d = '';
+  String lTime = '';
+  String dTime = '';
 }
 
+class DayPassTheme {
+  final int weekday; // 1 = Monday, 7 = Sunday
+  final String dayName;
+  final String dayNameGu;
+  final String colorName;
+  final String colorNameGu;
+  final String emoji;
+  final Color primaryColor;
+  final Color secondaryColor;
+  final Color accentColor;
+  final Color badgeBgColor;
+
+  const DayPassTheme({
+    required this.weekday,
+    required this.dayName,
+    required this.dayNameGu,
+    required this.colorName,
+    required this.colorNameGu,
+    required this.emoji,
+    required this.primaryColor,
+    required this.secondaryColor,
+    required this.accentColor,
+    required this.badgeBgColor,
+  });
+}
+
+final Map<int, DayPassTheme> dayPassThemes = {
+  1: const DayPassTheme(
+    weekday: 1,
+    dayName: 'Monday',
+    dayNameGu: 'સોમવાર',
+    colorName: 'Royal Blue',
+    colorNameGu: 'રોયલ બ્લુ',
+    emoji: '🟦',
+    primaryColor: Color(0xFF1E3A8A),
+    secondaryColor: Color(0xFF2563EB),
+    accentColor: Color(0xFF93C5FD),
+    badgeBgColor: Color(0xFF0F172A),
+  ),
+  2: const DayPassTheme(
+    weekday: 2,
+    dayName: 'Tuesday',
+    dayNameGu: 'મંગળવાર',
+    colorName: 'Emerald Green',
+    colorNameGu: 'એમરાલ્ડ ગ્રીન',
+    emoji: '🟩',
+    primaryColor: Color(0xFF064E3B),
+    secondaryColor: Color(0xFF059669),
+    accentColor: Color(0xFF6EE7B7),
+    badgeBgColor: Color(0xFF022C22),
+  ),
+  3: const DayPassTheme(
+    weekday: 3,
+    dayName: 'Wednesday',
+    dayNameGu: 'બુધવાર',
+    colorName: 'Royal Purple',
+    colorNameGu: 'રોયલ પર્પલ',
+    emoji: '🟪',
+    primaryColor: Color(0xFF581C87),
+    secondaryColor: Color(0xFF7C3AED),
+    accentColor: Color(0xFFC4B5FD),
+    badgeBgColor: Color(0xFF3B0764),
+  ),
+  4: const DayPassTheme(
+    weekday: 4,
+    dayName: 'Thursday',
+    dayNameGu: 'ગુરુવાર',
+    colorName: 'Golden Amber',
+    colorNameGu: 'ગોલ્ડન એમ્બર',
+    emoji: '🟧',
+    primaryColor: Color(0xFF9A3412),
+    secondaryColor: Color(0xFFD97706),
+    accentColor: Color(0xFFFDE68A),
+    badgeBgColor: Color(0xFF451A03),
+  ),
+  5: const DayPassTheme(
+    weekday: 5,
+    dayName: 'Friday',
+    dayNameGu: 'શુક્રવાર',
+    colorName: 'Ocean Teal',
+    colorNameGu: 'ઓશન ટીલ',
+    emoji: '🩵',
+    primaryColor: Color(0xFF0F766E),
+    secondaryColor: Color(0xFF0D9488),
+    accentColor: Color(0xFF99F6E4),
+    badgeBgColor: Color(0xFF134E4A),
+  ),
+  6: const DayPassTheme(
+    weekday: 6,
+    dayName: 'Saturday',
+    dayNameGu: 'શનિવાર',
+    colorName: 'Ruby Crimson',
+    colorNameGu: 'રૂબી ક્રિમસન',
+    emoji: '🟥',
+    primaryColor: Color(0xFF881337),
+    secondaryColor: Color(0xFFE11D48),
+    accentColor: Color(0xFFFDA4AF),
+    badgeBgColor: Color(0xFF4C0519),
+  ),
+  7: const DayPassTheme(
+    weekday: 7,
+    dayName: 'Sunday',
+    dayNameGu: 'રવિવાર',
+    colorName: 'Midnight Indigo',
+    colorNameGu: 'મિડનાઇટ ઇન્ડિગો',
+    emoji: '🟪',
+    primaryColor: Color(0xFF312E81),
+    secondaryColor: Color(0xFF4F46E5),
+    accentColor: Color(0xFFA5B4FC),
+    badgeBgColor: Color(0xFF1E1B4B),
+  ),
+};
+
+DayPassTheme getTodayPassTheme([DateTime? dt]) {
+  final now = dt ?? realTime;
+  return dayPassThemes[now.weekday] ?? dayPassThemes[1]!;
+}
+
+int globalTenderPrice = 70;
 Map<String, DailyRecord> globalAttendanceMap = {};
 Map<String, int> globalMonthlyPaid = {};
 List<String> hiddenComplaints = [];
@@ -1244,6 +1420,13 @@ String? globalMenuUrl;
 DateTime globalAdminLastViewedComplaints = DateTime(2000);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  HardwareKeyboard.instance.addHandler((KeyEvent event) {
+    if (event.logicalKey == LogicalKeyboardKey.printScreen) {
+      Clipboard.setData(const ClipboardData(text: ''));
+      return true;
+    }
+    return false;
+  });
   try {
     await Firebase.initializeApp(
       options: const FirebaseOptions(
@@ -1257,6 +1440,13 @@ void main() async {
     print(
       "Firebase Initialized Successfully",
     );
+    if (!kIsWeb) {
+      try {
+        FirebaseDatabase.instance.setPersistenceEnabled(true);
+      } catch (e) {
+        print("Firebase persistence: $e");
+      }
+    }
     FirebaseDatabase.instance.ref('.info/serverTimeOffset').onValue.listen((event) {
       globalServerTimeOffset = (event.snapshot.value as num?)?.toInt() ?? 0;
     });
@@ -1290,10 +1480,14 @@ class ResponsiveWrapper extends StatelessWidget {
   const ResponsiveWrapper({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1200),
-        child: child,
+    return MediaQuery.withClampedTextScaling(
+      minScaleFactor: 0.85,
+      maxScaleFactor: 1.20,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: child,
+        ),
       ),
     );
   }
@@ -1335,6 +1529,11 @@ Future<void> _loadDataFromPrefs() async {
   if (savedAdminHiddenComplaints != null) {
     globalAdminHiddenComplaints.clear();
     globalAdminHiddenComplaints.addAll(savedAdminHiddenComplaints);
+  }
+  List<String>? savedDismissedDues = prefs.getStringList('adminDismissedDues');
+  if (savedDismissedDues != null) {
+    globalAdminDismissedDues.clear();
+    globalAdminDismissedDues.addAll(savedDismissedDues);
   }
   List<String>? studentStrs = prefs.getStringList('globalRegisteredStudents');
   if (studentStrs != null && studentStrs.isNotEmpty) {
@@ -1403,8 +1602,8 @@ String hashPassword(String password) {
 }
 
 int calculatePayableBill(int presentMealsCount) {
-  int actualBill = presentMealsCount * 70;
-  return math.max(actualBill, 3080);
+  int actualBill = presentMealsCount * globalTenderPrice;
+  return math.max(actualBill, 44 * globalTenderPrice);
 }
 
 class SyncService {
@@ -1499,6 +1698,18 @@ class SyncService {
     }
   }
 
+  static Future<void> updateDynamicPoll(DynamicPoll poll) async {
+    try {
+      if (dynamicPolls.containsKey(poll.id)) {
+        dynamicPolls[poll.id] = poll;
+      }
+      await _dbRef.child('dynamic_polls').child(poll.id).set(poll.toJson());
+      globalSyncTrigger.value++;
+    } catch (e) {
+      print("Update poll error: $e");
+    }
+  }
+
   static Future<void> stopDynamicPoll(String id) async {
     try {
       await _dbRef.child('dynamic_polls').child(id).update({'isActive': false});
@@ -1565,9 +1776,12 @@ class SyncService {
     }
   }
 
+  static String attendanceSafeKey(String key) => key.replaceAll(RegExp(r'[.#$\[\]/]'), '_');
+
   static Future<void> pushAttendanceMeal(String key, String meal, String status) async {
+    final safeKey = attendanceSafeKey(key);
     try {
-      await _dbRef.child('attendance').child(key).update({meal: status});
+      await _dbRef.child('attendance').child(safeKey).update({meal: status});
     } catch (e) {
       print("Push attendance meal error: $e");
     }
@@ -1576,7 +1790,16 @@ class SyncService {
   static Future<void> pushAttendanceBatch(Map<String, dynamic> updates) async {
     try {
       if (updates.isNotEmpty) {
-        await _dbRef.child('attendance').update(updates);
+        Map<String, dynamic> safeUpdates = {};
+        updates.forEach((k, v) {
+          if (k.contains('/')) {
+            var parts = k.split('/');
+            safeUpdates["${attendanceSafeKey(parts[0])}/${parts[1]}"] = v;
+          } else {
+            safeUpdates[attendanceSafeKey(k)] = v;
+          }
+        });
+        await _dbRef.child('attendance').update(safeUpdates);
         globalSyncTrigger.value++;
       }
     } catch (e) {
@@ -1585,16 +1808,29 @@ class SyncService {
   }
 
   static Future<void> pushAttendance(String key, DailyRecord rec) async {
+    final safeKey = attendanceSafeKey(key);
     try {
-      Map<String, dynamic> updateData = {};
-      if (rec.l.isNotEmpty) updateData['l'] = rec.l;
-      if (rec.d.isNotEmpty) updateData['d'] = rec.d;
-      if (updateData.isNotEmpty) {
-        await _dbRef.child('attendance').child(key).update(updateData);
-      }
+      Map<String, dynamic> updateData = {
+        'l': rec.l,
+        'd': rec.d,
+        if (rec.lTime.isNotEmpty) 'lt': rec.lTime,
+        if (rec.dTime.isNotEmpty) 'dt': rec.dTime,
+      };
+      await _dbRef.child('attendance').child(safeKey).update(updateData);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push attendance error: $e");
+    }
+  }
+
+  static Future<void> pushTenderPrice(int price) async {
+    try {
+      globalTenderPrice = price;
+      await _dbRef.child('tender_price').set(price);
+      await _dbRef.child('switches').child('tenderPrice').set(price);
+      globalSyncTrigger.value++;
+    } catch (e) {
+      print("Push tender price error: $e");
     }
   }
 
@@ -1678,9 +1914,20 @@ class SyncService {
         if (!_switchCooldown) {
           globalEntryL = false;
           globalEntryD = false;
+          if (data['tender_price'] != null) {
+            globalTenderPrice = int.tryParse(data['tender_price'].toString()) ?? 70;
+          } else if (data['switches'] != null && data['switches']['tenderPrice'] != null) {
+            globalTenderPrice = int.tryParse(data['switches']['tenderPrice'].toString()) ?? 70;
+          }
           if (data['switches'] != null) {
             globalEntryL = data['switches']['globalEntryL'] ?? false;
             globalEntryD = data['switches']['globalEntryD'] ?? false;
+            globalLunchCloseHour = data['switches']['lunchCloseHour'] ?? 14;
+            globalLunchCloseMinute = data['switches']['lunchCloseMinute'] ?? 30;
+            globalDinnerCloseHour = data['switches']['dinnerCloseHour'] ?? 21;
+            globalDinnerCloseMinute = data['switches']['dinnerCloseMinute'] ?? 30;
+            globalLunchOpenedDate = data['switches']['lunchOpenedDate'] ?? '';
+            globalDinnerOpenedDate = data['switches']['dinnerOpenedDate'] ?? '';
           }
           globalAttendanceMap.clear();
           if (data['attendance'] != null) {
@@ -1688,7 +1935,13 @@ class SyncService {
               var rec = DailyRecord();
               rec.l = v['l'] ?? '';
               rec.d = v['d'] ?? '';
-              globalAttendanceMap[k.toString()] = rec;
+              rec.lTime = v['lt'] ?? '';
+              rec.dTime = v['dt'] ?? '';
+              String safeK = attendanceSafeKey(k.toString());
+              globalAttendanceMap[safeK] = rec;
+              if (safeK != k.toString()) {
+                globalAttendanceMap[k.toString()] = rec;
+              }
             });
           }
         }
@@ -1977,6 +2230,13 @@ class SyncService {
       await _dbRef.child('switches').set({
         'globalEntryL': globalEntryL,
         'globalEntryD': globalEntryD,
+        'lunchCloseHour': globalLunchCloseHour,
+        'lunchCloseMinute': globalLunchCloseMinute,
+        'dinnerCloseHour': globalDinnerCloseHour,
+        'dinnerCloseMinute': globalDinnerCloseMinute,
+        'lunchOpenedDate': globalLunchOpenedDate,
+        'dinnerOpenedDate': globalDinnerOpenedDate,
+        'tenderPrice': globalTenderPrice,
       });
       globalSyncTrigger.value++;
     } catch (e) {
@@ -1985,6 +2245,22 @@ class SyncService {
     Future.delayed(const Duration(milliseconds: 1500), () {
       _switchCooldown = false;
     });
+  }
+
+  static Future<void> autoCloseIfExpired(String meal) async {
+    try {
+      if (meal == 'l' && globalEntryL && isPastLunchCloseTime()) {
+        globalEntryL = false;
+        await _dbRef.child('switches').child('globalEntryL').set(false);
+        globalSyncTrigger.value++;
+      } else if (meal == 'd' && globalEntryD && isPastDinnerCloseTime()) {
+        globalEntryD = false;
+        await _dbRef.child('switches').child('globalEntryD').set(false);
+        globalSyncTrigger.value++;
+      }
+    } catch (e) {
+      print("Auto close error: $e");
+    }
   }
 
   static int _computeHash(Map<String, dynamic> data) {
@@ -2171,9 +2447,20 @@ class SyncService {
         if (!_switchCooldown) {
           globalEntryL = false;
           globalEntryD = false;
+          if (data['tender_price'] != null) {
+            globalTenderPrice = int.tryParse(data['tender_price'].toString()) ?? 70;
+          } else if (data['switches'] != null && data['switches']['tenderPrice'] != null) {
+            globalTenderPrice = int.tryParse(data['switches']['tenderPrice'].toString()) ?? 70;
+          }
           if (data['switches'] != null) {
             globalEntryL = data['switches']['globalEntryL'] ?? false;
             globalEntryD = data['switches']['globalEntryD'] ?? false;
+            globalLunchCloseHour = data['switches']['lunchCloseHour'] ?? 14;
+            globalLunchCloseMinute = data['switches']['lunchCloseMinute'] ?? 30;
+            globalDinnerCloseHour = data['switches']['dinnerCloseHour'] ?? 21;
+            globalDinnerCloseMinute = data['switches']['dinnerCloseMinute'] ?? 30;
+            globalLunchOpenedDate = data['switches']['lunchOpenedDate'] ?? '';
+            globalDinnerOpenedDate = data['switches']['dinnerOpenedDate'] ?? '';
           }
           globalAttendanceMap.clear();
           if (data['attendance'] != null) {
@@ -2181,7 +2468,13 @@ class SyncService {
               var rec = DailyRecord();
               rec.l = v['l'] ?? '';
               rec.d = v['d'] ?? '';
-              globalAttendanceMap[k.toString()] = rec;
+              rec.lTime = v['lt'] ?? '';
+              rec.dTime = v['dt'] ?? '';
+              String safeK = attendanceSafeKey(k.toString());
+              globalAttendanceMap[safeK] = rec;
+              if (safeK != k.toString()) {
+                globalAttendanceMap[k.toString()] = rec;
+              }
             });
           }
         }
@@ -5935,9 +6228,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   );
   Widget _buildHomeTab() {
     DateTime now = realTime;
-    String key =
-        "${now.year}-${now.month}-${now.day}_${widget.roomNo}_${widget.name}";
-    DailyRecord todayRecord = globalAttendanceMap[key] ?? DailyRecord();
+    String rawKey = "${now.year}-${now.month}-${now.day}_${widget.roomNo}_${widget.name}";
+    String key = attendanceSafeKey(rawKey);
+    DailyRecord todayRecord = globalAttendanceMap[key] ?? globalAttendanceMap[rawKey] ?? DailyRecord();
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -5956,20 +6249,26 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
-                      children: [
-                        Icon(Icons.restaurant, color: brandGreen),
-                        SizedBox(width: 8),
-                        Text(
-                          "Today's Attendance",
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: brandDark,
+                    Expanded(
+                      child: Row(
+                        children: const [
+                          Icon(Icons.restaurant, color: brandGreen),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              "Today's Attendance",
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: brandDark,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
@@ -6003,7 +6302,31 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (todayRecord.l.isNotEmpty)
+                  if (todayRecord.l.isEmpty && isPastLunchCloseTime())
+                    Builder(builder: (_) {
+                      SyncService.autoCloseIfExpired('l');
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.schedule, color: Colors.amber.shade800, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Lunch mess entry closed at ${formatTimeOfDay(globalLunchCloseHour, globalLunchCloseMinute)}.",
+                                style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    })
+                  else if (todayRecord.l.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -6038,6 +6361,45 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               ),
                             ),
                           ),
+                          if (todayRecord.l == 'P')
+                            InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MealPassScreen(
+                                      mealName: 'Lunch',
+                                      photoUrl: widget.photoUrl,
+                                      name: widget.name,
+                                      roomNo: widget.roomNo,
+                                    ),
+                                  ),
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade700,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.badge, size: 14, color: Colors.white),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      "Show Pass",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           if (todayRecord.l == 'A')
                             TextButton(
                               onPressed: () async {
@@ -6069,6 +6431,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 () => DailyRecord(),
                               );
                               globalAttendanceMap[key]!.l = 'P';
+                              globalAttendanceMap[key]!.lTime = formatTimeOfDay(realTime.hour, realTime.minute);
                               _lunchMsgVisible = true;
                             });
                             await SyncService.pushAttendance(
@@ -6147,7 +6510,31 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (todayRecord.d.isNotEmpty)
+                  if (todayRecord.d.isEmpty && isPastDinnerCloseTime())
+                    Builder(builder: (_) {
+                      SyncService.autoCloseIfExpired('d');
+                      return Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.amber.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.schedule, color: Colors.amber.shade800, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Dinner mess entry closed at ${formatTimeOfDay(globalDinnerCloseHour, globalDinnerCloseMinute)}.",
+                                style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w600, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    })
+                  else if (todayRecord.d.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -6182,6 +6569,45 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                               ),
                             ),
                           ),
+                          if (todayRecord.d == 'P')
+                            InkWell(
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => MealPassScreen(
+                                      mealName: 'Dinner',
+                                      photoUrl: widget.photoUrl,
+                                      name: widget.name,
+                                      roomNo: widget.roomNo,
+                                    ),
+                                  ),
+                                );
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.shade700,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.badge, size: 14, color: Colors.white),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      "Show Pass",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           if (todayRecord.d == 'A')
                             TextButton(
                               onPressed: () async {
@@ -6213,6 +6639,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 () => DailyRecord(),
                               );
                               globalAttendanceMap[key]!.d = 'P';
+                              globalAttendanceMap[key]!.dTime = formatTimeOfDay(realTime.hour, realTime.minute);
                               _dinnerMsgVisible = true;
                             });
                             await SyncService.pushAttendance(
@@ -6571,7 +6998,10 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     final now = realTime; // Filter active polls
     final polls = SyncService.dynamicPolls.values.where((p) {
       bool isLocked = nowMs > p.endTime || !p.isActive;
-      return !isLocked;
+      if (!isLocked) return true;
+      // Keep closed polls visible to students for 24 hours after end time
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      return (nowMs - p.endTime) < twentyFourHours;
     }).toList()..sort((a, b) => b.startTime.compareTo(a.startTime));
     if (polls.isEmpty) {
       return Card(
@@ -6732,10 +7162,26 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                       style: const TextStyle(color: brandGray, fontSize: 12),
                     ),
                     if (isLocked)
-                      const Text(
-                        "Poll Closed",
-                        style: TextStyle(
-                          color: Colors.redAccent,
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.redAccent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          "Poll Closed (Final Result)",
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    if (myVote != null)
+                      Text(
+                        "Your Vote: $myVote",
+                        style: const TextStyle(
+                          color: brandGreen,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                         ),
@@ -6914,29 +7360,13 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   },
                 ),
                 ListTile(
-                  leading: const Icon(Icons.calendar_month, color: brandDark),
-                  title: const Text(
-                    'Long Leave',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const LongLeaveScreen(),
-                      ),
-                    );
-                  },
-                ),
-                ListTile(
                   leading: const Icon(
                     Icons.feedback_outlined,
                     color: brandDark,
                   ),
-                  title: const Text(
-                    'Mess Complaints',
-                    style: TextStyle(fontWeight: FontWeight.w500),
+                  title: Text(
+                    'Mess Complaints (${globalHostelMode == 'boys' ? 'Boys' : 'Girls'})',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   onTap: () {
                     Navigator.pop(context);
@@ -7215,6 +7645,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   StreamSubscription? _adminsStreamSub;
   StreamSubscription? _rolesStreamSub;
   Timer? _adminEvictionPollTimer;
+  Timer? _autoCloseCheckTimer;
+  bool _showAllDues = false;
 
   @override
   void initState() {
@@ -7223,6 +7655,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _initDirectAdminListener();
     _initRolesListener();
     _startAdminEvictionHeartbeat();
+    _autoCloseCheckTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _checkAutoClose(),
+    );
 
     final initialScope = getAdminHostelScope(widget.phone);
     if (initialScope == 'boys' && globalHostelMode != 'boys') {
@@ -7347,6 +7783,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _adminsStreamSub?.cancel();
     _rolesStreamSub?.cancel();
     _adminEvictionPollTimer?.cancel();
+    _autoCloseCheckTimer?.cancel();
+    _liveSwipeSearchCtrl.dispose();
     globalSyncTrigger.removeListener(_onSync);
     super.dispose();
   }
@@ -7509,6 +7947,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       int payableBill = calculatePayableBill(counts['P']!);
       int paidAmt = globalMonthlyPaid[groupKey] ?? 0;
       if (paidAmt < payableBill) {
+        if (globalAdminDismissedDues.contains(groupKey)) return;
         RegisteredStudent? student;
         try {
           student = globalRegisteredStudents.firstWhere(
@@ -7517,6 +7956,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         } catch (e) {}
         if (student != null) {
           pendingList.add({
+            'groupKey': groupKey,
             'student': student,
             'monthName': monthName,
             'year': year,
@@ -7533,6 +7973,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   int _selectedIndex = 0;
+  String _liveSwipeSelectedMeal = 'l';
+  String _liveSwipeSearchQuery = '';
+  final TextEditingController _liveSwipeSearchCtrl = TextEditingController();
 
   Widget _buildAdminHomeTab() {
     return ListView(
@@ -7568,57 +8011,94 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Lunch Mess Open', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: InkWell(
+                      onTap: () => _pickAutoCloseTime('l'),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.timer_outlined, size: 14, color: brandGray),
+                            const SizedBox(width: 4),
+                            Text(
+                              "Auto-close: ${formatTimeOfDay(globalLunchCloseHour, globalLunchCloseMinute)} (Tap to edit)",
+                              style: const TextStyle(fontSize: 12, color: brandGreen, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     activeColor: brandGreen,
                     value: globalEntryL,
-                    onChanged: (v) async {
-                      if (SyncService.isSwitchCooldown) return;
-                      SyncService.setSwitchCooldown(true);
-                      setState(() => globalEntryL = v);
-                      if (v == true) {
-                        NotificationService.sendPushNotificationToStudents("Lunch Time", "Mess Open");
-                      } else {
-                        await _closeMessAndMarkAbsent('l');
-                      }
-                      await SyncService.pushSwitchesNow();
-                    },
+                    onChanged: (v) => _toggleMessEntryWithConfirmation('l', v),
                   ),
+                  const Divider(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Dinner Mess Open', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: InkWell(
+                      onTap: () => _pickAutoCloseTime('d'),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.timer_outlined, size: 14, color: brandGray),
+                            const SizedBox(width: 4),
+                            Text(
+                              "Auto-close: ${formatTimeOfDay(globalDinnerCloseHour, globalDinnerCloseMinute)} (Tap to edit)",
+                              style: const TextStyle(fontSize: 12, color: brandGreen, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     activeColor: brandGreen,
                     value: globalEntryD,
-                    onChanged: (v) async {
-                      if (SyncService.isSwitchCooldown) return;
-                      SyncService.setSwitchCooldown(true);
-                      setState(() => globalEntryD = v);
-                      if (v == true) {
-                        NotificationService.sendPushNotificationToStudents("Dinner Time", "Mess Open");
-                      } else {
-                        await _closeMessAndMarkAbsent('d');
-                      }
-                      await SyncService.pushSwitchesNow();
-                    },
+                    onChanged: (v) => _toggleMessEntryWithConfirmation('d', v),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
         ],
+        _buildDailyAttendanceSummaryCard(),
+        const SizedBox(height: 12),
+        _buildLiveSwipedSection(),
+        const SizedBox(height: 12),
         ...(() {
           final allPolls = SyncService.dynamicPolls.values.toList()
             ..sort((a, b) => b.startTime.compareTo(a.startTime));
           if (allPolls.isEmpty || !checkAdminPermission(widget.phone, 'can_manage_polls')) return <Widget>[const SizedBox.shrink()];
           return <Widget>[
-            const Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 8, top: 8),
-              child: Text(
-                "Live & Recent Polls",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: brandDark,
-                ),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8, top: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Live & Recent Polls",
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: brandDark,
+                    ),
+                  ),
+                  if (checkAdminPermission(widget.phone, 'can_manage_polls'))
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: brandGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => _showCreatePollDialog(),
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text("New Poll", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                ],
               ),
             ),
             ...allPolls.map<Widget>((p) {
@@ -7633,142 +8113,191 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               ).format(context);
               final String dateStr =
                   "${DateTime.fromMillisecondsSinceEpoch(p.startTime).day}/${DateTime.fromMillisecondsSinceEpoch(p.startTime).month}";
-              return InkWell(
-                onLongPress: (closed && checkAdminPermission(widget.phone, 'can_manage_polls'))
-                    ? () {
-                        showDialog(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text("Delete Poll?"),
-                            content: const Text(
-                              "Are you sure you want to permanently delete this poll?",
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: const Text("Cancel"),
-                              ),
-                              TextButton(
-                                onPressed: () async {
-                                  Navigator.pop(ctx);
-                                  await SyncService.deleteDynamicPoll(p.id);
-                                  setState(() {});
-                                },
-                                child: const Text(
-                                  "Delete",
-                                  style: TextStyle(
-                                    color: Colors.red,
+              return Card(
+                color: Colors.white,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  p.question,
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: brandDark,
                                   ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "Date: $dateStr | Time: $fmtStart - $fmtEnd",
+                                  style: const TextStyle(
+                                    color: brandGray,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: closed ? Colors.redAccent.withValues(alpha: 0.12) : brandGreen.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              closed ? "Closed" : "Live",
+                              style: TextStyle(
+                                color: closed ? Colors.redAccent : brandGreen,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          if (checkAdminPermission(widget.phone, 'can_manage_polls')) ...[
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined, size: 18, color: brandDark),
+                              tooltip: "Edit Poll",
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              onPressed: () => _showEditPollDialog(p),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
+                              tooltip: "Delete Poll",
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                              onPressed: () => _confirmDeletePoll(p),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const Divider(height: 20),
+                      ...p.options.map((o) {
+                        final int optVotes = p.votes.values.where((v) => v == o).length;
+                        final double pct = p.votes.isEmpty ? 0 : optVotes / p.votes.length;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      "$o: $optVotes votes (${(pct * 100).toStringAsFixed(1)}%)",
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: brandDark),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () => _showPollVotersDialog(p, o),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.people_alt_outlined, size: 14, color: brandGreen),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            "Voters ($optVotes)",
+                                            style: const TextStyle(fontSize: 11, color: brandGreen, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: pct,
+                                  backgroundColor: Colors.grey.shade200,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    closed ? brandGray : brandGreen,
+                                  ),
+                                  minHeight: 6,
                                 ),
                               ),
                             ],
                           ),
                         );
-                      }
-                    : null,
-                child: Card(
-                  color: Colors.white,
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  elevation: 2,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                p.question,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                      }),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            "Total Votes: ${p.votes.length}",
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: brandGray,
+                            ),
+                          ),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: brandDark,
+                                  side: BorderSide(color: brandDark.withValues(alpha: 0.3)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 ),
+                                onPressed: () => _exportPollResultToPdf(p),
+                                icon: const Icon(Icons.picture_as_pdf, size: 14, color: Colors.redAccent),
+                                label: const Text("PDF", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                               ),
-                            ),
-                            if (closed)
-                              const Text(
-                                "Closed",
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold,
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: brandGreen,
+                                  side: BorderSide(color: brandGreen.withValues(alpha: 0.4)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  visualDensity: VisualDensity.compact,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                 ),
-                              )
-                            else
-                              const Text(
-                                "Live",
-                                style: TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
+                                onPressed: () => _showPollVotersDialog(p),
+                                icon: const Icon(Icons.people, size: 14),
+                                label: const Text("All Voters", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                              ),
+                              if (!closed && checkAdminPermission(widget.phone, 'can_manage_polls'))
+                                ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    visualDensity: VisualDensity.compact,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  onPressed: () async {
+                                    await SyncService.stopDynamicPoll(p.id);
+                                    if (mounted) setState(() {});
+                                  },
+                                  child: const Text("End Poll", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
                                 ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Date: $dateStr | Time: $fmtStart - $fmtEnd",
-                          style: const TextStyle(
-                            color: brandGray,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ...p.options.map(
-                          (o) => Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text(
-                              "$o: ${p.votes.values.where((v) => v == o).length} votes",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Total Votes: ${p.votes.length}",
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: brandGray,
-                          ),
-                        ),
-                        if (!closed) ...[
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: () async {
-                                await SyncService.stopDynamicPoll(p.id);
-                                setState(() {});
-                              },
-                              child: const Text("End Poll Now"),
-                            ),
-                          ),
-                        ] else ...[
-                          const SizedBox(height: 8),
-                          const Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              "Long press to delete",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: brandGray,
-                                fontStyle: FontStyle.italic,
-                              ),
-                            ),
+                            ],
                           ),
                         ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -7809,7 +8338,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           ),
                         ),
                         const Spacer(),
-                        if (dues.isNotEmpty)
+                        if (dues.isNotEmpty) ...[
+                          IconButton(
+                            icon: const Icon(
+                              Icons.cleaning_services_rounded,
+                              color: Colors.redAccent,
+                              size: 20,
+                            ),
+                            tooltip: "Clear All Dues (બધા ક્લિયર કરો)",
+                            onPressed: () => _showClearAllDuesDialog(dues),
+                          ),
                           IconButton(
                             icon: const Icon(
                               Icons.notifications_active,
@@ -7835,6 +8373,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                               );
                             },
                           ),
+                        ],
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -7856,7 +8395,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ],
                     ),
                     const Divider(),
-                    ...dues.map((due) {
+                    ...((_showAllDues || dues.length <= 5 ? dues : dues.take(5)).map((due) {
                       RegisteredStudent st = due['student'];
                       return Padding(
                         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -7931,10 +8470,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 ),
                               ),
                             ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.redAccent,
+                                size: 20,
+                              ),
+                              tooltip: "Delete / Clear Fee",
+                              onPressed: () => _showClearDueDialog(due),
+                            ),
                           ],
                         ),
                       );
-                    }).toList(),
+                    }).toList()),
+                    if (dues.length > 5)
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () => setState(() => _showAllDues = !_showAllDues),
+                          icon: Icon(_showAllDues ? Icons.expand_less : Icons.expand_more, size: 16, color: brandDark),
+                          label: Text(
+                            _showAllDues ? "Show Less" : "Show All (${dues.length} Students)",
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: brandDark),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -7942,6 +8501,1242 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ];
         })(),
       ],
+    );
+  }
+
+  void _showClearDueDialog(Map<String, dynamic> due) {
+    final RegisteredStudent st = due['student'];
+    final String gKey = due['groupKey'] as String;
+    final int payable = due['payable'] as int;
+    final int dueAmt = due['due'] as int;
+    final String monthName = due['monthName'] as String;
+    final String year = due['year'] as String;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                "Clear Pending Fee",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: brandDark),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "${st.name} (Room ${st.roomNo})",
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: brandDark),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Period: $monthName $year • Pending Due: ₹$dueAmt",
+              style: const TextStyle(fontSize: 13, color: Colors.redAccent, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "How would you like to remove this entry from the dashboard?",
+              style: TextStyle(fontSize: 12, color: brandGray),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: brandGray)),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+              side: const BorderSide(color: Colors.redAccent),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() {
+                globalAdminDismissedDues.add(gKey);
+                _cachedPendingDues = null;
+              });
+              await saveAdminDismissedDues();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("${st.name}'s fee entry dismissed from dashboard."),
+                    backgroundColor: brandDark,
+                  ),
+                );
+              }
+            },
+            child: const Text("Dismiss / Delete", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: brandGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() {
+                globalMonthlyPaid[gKey] = payable;
+                _cachedPendingDues = null;
+              });
+              await SyncService.pushPaidTargeted(gKey, payable);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Marked as fully paid! ₹$dueAmt cleared."),
+                    backgroundColor: brandGreen,
+                  ),
+                );
+              }
+            },
+            child: const Text("Mark as Paid", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearAllDuesDialog(List<Map<String, dynamic>> dues) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.cleaning_services_rounded, color: Colors.redAccent, size: 22),
+            SizedBox(width: 8),
+            Text(
+              "Clear All Pending Dues",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: brandDark),
+            ),
+          ],
+        ),
+        content: Text(
+          "Are you sure you want to clear all ${dues.length} pending dues from the dashboard?",
+          style: const TextStyle(fontSize: 13, color: brandDark),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: brandGray)),
+          ),
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.redAccent,
+              side: const BorderSide(color: Colors.redAccent),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              setState(() {
+                for (var d in dues) {
+                  final gKey = d['groupKey'] as String;
+                  globalAdminDismissedDues.add(gKey);
+                }
+                _cachedPendingDues = null;
+              });
+              await saveAdminDismissedDues();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("All pending dues dismissed from dashboard!"),
+                    backgroundColor: brandDark,
+                  ),
+                );
+              }
+            },
+            child: const Text("Dismiss All", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: brandGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              for (var d in dues) {
+                final gKey = d['groupKey'] as String;
+                final payable = d['payable'] as int;
+                globalMonthlyPaid[gKey] = payable;
+                await SyncService.pushPaidTargeted(gKey, payable);
+              }
+              setState(() {
+                _cachedPendingDues = null;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("All dues marked as paid & cleared!"),
+                    backgroundColor: brandGreen,
+                  ),
+                );
+              }
+            },
+            child: const Text("Mark All Paid", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWeeklyColorScheduleDialog() {
+    final now = realTime;
+    final todayWeekday = now.weekday;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Row(
+          children: [
+            Icon(Icons.palette_rounded, color: brandDark, size: 22),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                "Meal Pass Weekly Colors",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: brandDark),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: brandDark.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  "વિદ્યાર્થીઓ જ્યારે મેસ એન્ટ્રી સ્વાઇપ કરશે ત્યારે વાર મુજબ આ રંગનો પાસ દેખાશે. એડમિન/કેન્ટીન સ્ટાફે કાઉન્ટર પર આજનો કલર વેરિફાય કરવો.",
+                  style: TextStyle(fontSize: 12, color: brandDark, height: 1.3),
+                ),
+              ),
+              const SizedBox(height: 14),
+              ...([1, 2, 3, 4, 5, 6, 7].map((w) {
+                final t = dayPassThemes[w]!;
+                final isToday = (w == todayWeekday);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isToday ? t.primaryColor.withValues(alpha: 0.12) : Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isToday ? t.primaryColor : Colors.grey.shade200,
+                      width: isToday ? 2.0 : 1.0,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [t.primaryColor, t.secondaryColor],
+                          ),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: t.primaryColor.withValues(alpha: 0.35),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(t.emoji, style: const TextStyle(fontSize: 16)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  "${t.dayName} (${t.dayNameGu})",
+                                  style: TextStyle(
+                                    fontWeight: isToday ? FontWeight.w900 : FontWeight.bold,
+                                    fontSize: 14,
+                                    color: isToday ? t.primaryColor : brandDark,
+                                  ),
+                                ),
+                                if (isToday) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: brandGreen,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      "TODAY",
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "${t.colorName} • ${t.colorNameGu}",
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isToday ? t.primaryColor : brandGray,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              })),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: brandDark,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("OK / બરાબર", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditTenderPriceDialog() {
+    final ctrl = TextEditingController(text: globalTenderPrice.toString());
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.currency_rupee, color: brandDark),
+            SizedBox(width: 8),
+            Text(
+              "Custom Tender Price",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: brandDark),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Set the per-meal tender rate used for calculating total daily and monthly billing:",
+                style: TextStyle(fontSize: 13, color: brandGray),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.number,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: "Price Per Meal (₹)",
+                  prefixIcon: const Icon(Icons.currency_rupee, color: brandGreen),
+                  filled: true,
+                  fillColor: brandInputBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: brandGray, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: brandGreen,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              final newP = int.tryParse(ctrl.text.trim());
+              if (newP != null && newP > 0) {
+                Navigator.pop(ctx);
+                await SyncService.pushTenderPrice(newP);
+                if (mounted) {
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text("Tender price updated to ₹$newP per meal."),
+                      backgroundColor: brandGreen,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text("Save Price", style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyAttendanceSummaryCard() {
+    DateTime now = realTime;
+    final students = globalRegisteredStudents.where((s) => s.isValid).toList();
+    final int totalStudents = students.length;
+
+    int lunchPresent = 0;
+    int lunchAbsent = 0;
+    int lunchPending = 0;
+
+    int dinnerPresent = 0;
+    int dinnerAbsent = 0;
+    int dinnerPending = 0;
+
+    for (var s in students) {
+      final rawKey = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
+      final rec = getAttendanceMerged(rawKey) ?? DailyRecord();
+      final l = rec.l.trim();
+      final d = rec.d.trim();
+
+      if (l == 'P') {
+        lunchPresent++;
+      } else if (l == 'A') {
+        lunchAbsent++;
+      } else {
+        lunchPending++;
+      }
+
+      if (d == 'P') {
+        dinnerPresent++;
+      } else if (d == 'A') {
+        dinnerAbsent++;
+      } else {
+        dinnerPending++;
+      }
+    }
+
+    final int totalMealsToday = lunchPresent + dinnerPresent;
+    final int totalTenderAmount = totalMealsToday * globalTenderPrice;
+
+    return Card(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 3,
+      shadowColor: Colors.black12,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: brandDark.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.pie_chart_rounded, color: brandDark, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Today's Mess Overview",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: brandDark,
+                        ),
+                      ),
+                      Text(
+                        "${now.day}/${now.month}/${now.year} • Live Attendance",
+                        style: const TextStyle(fontSize: 11, color: brandGray, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: brandGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: brandGreen,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Text(
+                        "Live",
+                        style: TextStyle(
+                          color: brandGreen,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Today's Security Pass Color Banner for Admin
+            Builder(
+              builder: (context) {
+                final todayTheme = getTodayPassTheme(now);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        todayTheme.primaryColor.withValues(alpha: 0.12),
+                        todayTheme.secondaryColor.withValues(alpha: 0.05),
+                      ],
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: todayTheme.primaryColor.withValues(alpha: 0.35),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: todayTheme.primaryColor,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: todayTheme.primaryColor.withValues(alpha: 0.4),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Text(todayTheme.emoji, style: const TextStyle(fontSize: 15)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const Text(
+                                  "TODAY'S PASS COLOR",
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 0.7,
+                                    color: brandDark,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: todayTheme.primaryColor,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    todayTheme.dayName.toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              "${todayTheme.dayNameGu} • ${todayTheme.colorName} (${todayTheme.colorNameGu})",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: todayTheme.primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          backgroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(color: Colors.black.withValues(alpha: 0.1)),
+                          ),
+                        ),
+                        onPressed: () => _showWeeklyColorScheduleDialog(),
+                        icon: const Icon(Icons.palette_outlined, size: 14, color: brandDark),
+                        label: const Text(
+                          "All 7 Days",
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: brandDark),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+
+            // Hero Box: Total Meals Served Today
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.restaurant, color: Color(0xFF34D399), size: 15),
+                                SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    "TOTAL MEALS SERVED TODAY",
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.6,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  "$totalMealsToday",
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                    height: 1.0,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  "Meals (થાળી)",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF34D399),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _showEditTenderPriceDialog(),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Text(
+                                    "Tender Total",
+                                    style: TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.edit, size: 11, color: Colors.amber[300]),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                "₹$totalTenderAmount",
+                                style: const TextStyle(
+                                  color: Color(0xFFFBBF24),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                "@ ₹$globalTenderPrice/meal",
+                                style: const TextStyle(color: Colors.white60, fontSize: 9),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "🥪 Lunch: $lunchPresent",
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        Container(width: 1, height: 12, color: Colors.white24),
+                        Text(
+                          "🍛 Dinner: $dinnerPresent",
+                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        Container(width: 1, height: 12, color: Colors.white24),
+                        Text(
+                          "👥 Students: $totalStudents",
+                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFDCFCE7)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "🥪 Lunch",
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: globalEntryL ? brandGreen : brandGray.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                globalEntryL ? "OPEN" : "CLOSED",
+                                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.check_circle, size: 14, color: brandGreen),
+                            const SizedBox(width: 4),
+                            Text("$lunchPresent Present", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: brandGreen)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.cancel, size: 14, color: Colors.redAccent),
+                            const SizedBox(width: 4),
+                            Text("$lunchAbsent Absent", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.redAccent)),
+                          ],
+                        ),
+                        if (lunchPending > 0) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time_filled, size: 14, color: Color(0xFFF59E0B)),
+                              const SizedBox(width: 4),
+                              Text("$lunchPending Not Swiped", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFD97706))),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFDBEAFE)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "🍛 Dinner",
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: globalEntryD ? brandGreen : brandGray.withValues(alpha: 0.3),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                globalEntryD ? "OPEN" : "CLOSED",
+                                style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.check_circle, size: 14, color: Color(0xFF2563EB)),
+                            const SizedBox(width: 4),
+                            Text("$dinnerPresent Present", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.cancel, size: 14, color: Colors.redAccent),
+                            const SizedBox(width: 4),
+                            Text("$dinnerAbsent Absent", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.redAccent)),
+                          ],
+                        ),
+                        if (dinnerPending > 0) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time_filled, size: 14, color: Color(0xFFF59E0B)),
+                              const SizedBox(width: 4),
+                              Text("$dinnerPending Not Swiped", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFFD97706))),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiveSwipedSection() {
+    DateTime now = realTime;
+    final students = globalRegisteredStudents.where((s) => s.isValid).toList();
+    final int totalStudents = students.length;
+
+    List<Map<String, dynamic>> lunchSwipedList = [];
+    List<Map<String, dynamic>> dinnerSwipedList = [];
+
+    for (var s in students) {
+      final rawKey = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
+      final rec = getAttendanceMerged(rawKey) ?? DailyRecord();
+      if (rec.l.trim() == 'P') {
+        lunchSwipedList.add({'student': s, 'time': rec.lTime});
+      }
+      if (rec.d.trim() == 'P') {
+        dinnerSwipedList.add({'student': s, 'time': rec.dTime});
+      }
+    }
+
+    final currentList = _liveSwipeSelectedMeal == 'l' ? lunchSwipedList : dinnerSwipedList;
+    final mealLabel = _liveSwipeSelectedMeal == 'l' ? 'Lunch' : 'Dinner';
+
+    final q = _liveSwipeSearchQuery.trim().toLowerCase();
+    final filteredList = currentList.where((item) {
+      if (q.isEmpty) return true;
+      final RegisteredStudent st = item['student'];
+      return st.name.toLowerCase().contains(q) || st.roomNo.toLowerCase().contains(q);
+    }).toList();
+
+    return Card(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 3,
+      shadowColor: Colors.black12,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: brandGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.how_to_reg_rounded, color: brandGreen, size: 20),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Live Swiped Students",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: brandDark,
+                        ),
+                      ),
+                      Text(
+                        "${filteredList.length} of ${currentList.length} shown • $mealLabel Present",
+                        style: const TextStyle(fontSize: 11, color: brandGray, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: brandGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: brandGreen.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    "${currentList.length} / $totalStudents",
+                    style: const TextStyle(
+                      color: brandGreen,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Segmented Meal Selector
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: brandInputBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _liveSwipeSelectedMeal = 'l'),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _liveSwipeSelectedMeal == 'l' ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: _liveSwipeSelectedMeal == 'l'
+                              ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 2))]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text("🥪 Lunch", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _liveSwipeSelectedMeal == 'l' ? brandGreen : brandGray.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                "${lunchSwipedList.length}",
+                                style: TextStyle(
+                                  color: _liveSwipeSelectedMeal == 'l' ? Colors.white : brandDark,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() => _liveSwipeSelectedMeal = 'd'),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: _liveSwipeSelectedMeal == 'd' ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: _liveSwipeSelectedMeal == 'd'
+                              ? [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 4, offset: const Offset(0, 2))]
+                              : null,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text("🍛 Dinner", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: _liveSwipeSelectedMeal == 'd' ? const Color(0xFF2563EB) : brandGray.withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                "${dinnerSwipedList.length}",
+                                style: TextStyle(
+                                  color: _liveSwipeSelectedMeal == 'd' ? Colors.white : brandDark,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            TextField(
+              controller: _liveSwipeSearchCtrl,
+              onChanged: (v) => setState(() => _liveSwipeSearchQuery = v),
+              decoration: InputDecoration(
+                hintText: "Search swiped student by name or room...",
+                hintStyle: const TextStyle(fontSize: 13, color: brandGray),
+                prefixIcon: const Icon(Icons.search, size: 18, color: brandGray),
+                suffixIcon: _liveSwipeSearchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 16, color: brandGray),
+                        onPressed: () {
+                          _liveSwipeSearchCtrl.clear();
+                          setState(() => _liveSwipeSearchQuery = '');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: brandInputBg,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            if (filteredList.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: brandInputBg.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      _liveSwipeSearchQuery.isNotEmpty ? Icons.search_off_rounded : Icons.no_meals_rounded,
+                      size: 36,
+                      color: brandGray.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _liveSwipeSearchQuery.isNotEmpty
+                          ? "No matching student swiped for $mealLabel"
+                          : "No students have swiped for $mealLabel yet today.",
+                      style: const TextStyle(fontSize: 13, color: brandGray, fontWeight: FontWeight.w500),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+            else
+              Container(
+                constraints: const BoxConstraints(maxHeight: 340),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+                ),
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  physics: const ClampingScrollPhysics(),
+                  itemCount: filteredList.length,
+                  separatorBuilder: (_, __) => Divider(height: 1, color: Colors.black.withValues(alpha: 0.05)),
+                  itemBuilder: (ctx, i) {
+                    final item = filteredList[i];
+                    final RegisteredStudent s = item['student'];
+                    final String time = item['time'] ?? '';
+
+                    return ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                      leading: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: brandGreen.withValues(alpha: 0.12),
+                        backgroundImage: (s.photoUrl != null && s.photoUrl!.isNotEmpty)
+                            ? NetworkImage(s.photoUrl!)
+                            : null,
+                        child: (s.photoUrl == null || s.photoUrl!.isEmpty)
+                            ? Text(
+                                s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
+                                style: const TextStyle(color: brandGreen, fontWeight: FontWeight.bold, fontSize: 13),
+                              )
+                            : null,
+                      ),
+                      title: Text(
+                        s.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: brandDark),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: brandDark.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              "Room ${s.roomNo}",
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: brandDark),
+                            ),
+                          ),
+                          if (time.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            const Icon(Icons.access_time, size: 12, color: brandGray),
+                            const SizedBox(width: 3),
+                            Text(
+                              time,
+                              style: const TextStyle(fontSize: 11, color: brandGray, fontWeight: FontWeight.w500),
+                            ),
+                          ],
+                        ],
+                      ),
+                      trailing: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: brandGreen.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle, size: 14, color: brandGreen),
+                            SizedBox(width: 4),
+                            Text(
+                              "Present",
+                              style: TextStyle(
+                                color: brandGreen,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -8035,36 +9830,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           "New Notice",
           style: TextStyle(color: brandDark, fontWeight: FontWeight.bold),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleCtrl,
-              decoration: InputDecoration(
-                labelText: "Notice Title",
-                filled: true,
-                fillColor: brandInputBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleCtrl,
+                decoration: InputDecoration(
+                  labelText: "Notice Title",
+                  filled: true,
+                  fillColor: brandInputBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: msgCtrl,
-              maxLines: 4,
-              decoration: InputDecoration(
-                labelText: "Message",
-                filled: true,
-                fillColor: brandInputBg,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+              const SizedBox(height: 12),
+              TextField(
+                controller: msgCtrl,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  labelText: "Message",
+                  filled: true,
+                  fillColor: brandInputBg,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -8124,10 +9921,231 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  Future<void> _toggleMessEntryWithConfirmation(String meal, bool targetValue) async {
+    if (SyncService.isSwitchCooldown) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please wait a moment before changing mess entry switch."),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final mealName = meal == 'l' ? 'Lunch' : 'Dinner';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: (targetValue ? brandGreen : Colors.red).withOpacity(0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  targetValue ? Icons.restaurant_rounded : Icons.warning_amber_rounded,
+                  color: targetValue ? brandGreen : Colors.red,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  targetValue ? "Open $mealName Mess?" : "Close $mealName Mess?",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: brandDark),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  targetValue
+                      ? "Are you sure you want to open $mealName mess entry for students?"
+                      : "Are you sure you want to close $mealName mess entry?",
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: brandDark),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: targetValue ? Colors.blue.withOpacity(0.08) : Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: targetValue ? Colors.blue.withOpacity(0.3) : Colors.red.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        targetValue ? Icons.info_outline : Icons.error_outline,
+                        size: 18,
+                        color: targetValue ? Colors.blue[700] : Colors.red[700],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          targetValue
+                              ? "A push notification will be sent to all students informing them that $mealName is open."
+                              : "⚠️ WARNING: Remaining students who have NOT swiped will be automatically marked as Absent ('A').",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: targetValue ? Colors.blue[900] : Colors.red[900],
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text(
+                "Cancel / No",
+                style: TextStyle(color: brandGray, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: targetValue ? brandGreen : Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(
+                targetValue ? "Yes, Open Mess" : "Yes, Close Mess",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    SyncService.setSwitchCooldown(true);
+    setState(() {
+      if (meal == 'l') {
+        globalEntryL = targetValue;
+      } else {
+        globalEntryD = targetValue;
+      }
+    });
+
+    if (targetValue == true) {
+      final now = realTime;
+      final todayStr = "${now.year}-${now.month}-${now.day}";
+      if (meal == 'l') globalLunchOpenedDate = todayStr;
+      if (meal == 'd') globalDinnerOpenedDate = todayStr;
+      NotificationService.sendPushNotificationToStudents(
+        "$mealName Time",
+        "Mess Open",
+      );
+    } else {
+      await _closeMessAndMarkAbsent(meal);
+    }
+    await SyncService.pushSwitchesNow();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("$mealName mess entry ${targetValue ? 'opened' : 'closed'} successfully."),
+          backgroundColor: targetValue ? brandGreen : Colors.red[700],
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _checkAutoClose() async {
+    if (!mounted) return;
+    if (globalEntryL && isPastLunchCloseTime()) {
+      globalEntryL = false;
+      await _closeMessAndMarkAbsent('l');
+      await SyncService.pushSwitchesNow();
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Lunch mess entry auto-closed based on scheduled time."),
+            backgroundColor: brandDark,
+          ),
+        );
+      }
+    }
+    if (globalEntryD && isPastDinnerCloseTime()) {
+      globalEntryD = false;
+      await _closeMessAndMarkAbsent('d');
+      await SyncService.pushSwitchesNow();
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Dinner mess entry auto-closed based on scheduled time."),
+            backgroundColor: brandDark,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickAutoCloseTime(String meal) async {
+    final mealName = meal == 'l' ? 'Lunch' : 'Dinner';
+    final initialHour = meal == 'l' ? globalLunchCloseHour : globalDinnerCloseHour;
+    final initialMinute = meal == 'l' ? globalLunchCloseMinute : globalDinnerCloseMinute;
+    
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: initialHour, minute: initialMinute),
+      helpText: "Select $mealName Auto-Close Time",
+    );
+    
+    if (picked != null) {
+      setState(() {
+        if (meal == 'l') {
+          globalLunchCloseHour = picked.hour;
+          globalLunchCloseMinute = picked.minute;
+        } else {
+          globalDinnerCloseHour = picked.hour;
+          globalDinnerCloseMinute = picked.minute;
+        }
+      });
+      await SyncService.pushSwitchesNow();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("$mealName auto-close time updated to ${formatTimeOfDay(picked.hour, picked.minute)}."),
+            backgroundColor: brandGreen,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _closeMessAndMarkAbsent(String meal) async {
     try {
       DateTime now = realTime;
-      List<Future<void>> pushTasks = [];
+      Map<String, dynamic> batchUpdates = {};
       
       if (globalRegisteredStudents.isEmpty) {
         await SyncService.fetchNow();
@@ -8137,33 +10155,33 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       List<RegisteredStudent> studentsCopy = List.from(globalRegisteredStudents);
       
       for (var s in studentsCopy) {
-        String key = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
+        String rawKey = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
+        String safeKey = attendanceSafeKey(rawKey);
         
-        if (globalAttendanceMap[key] == null) {
-          globalAttendanceMap[key] = DailyRecord();
+        if (globalAttendanceMap[safeKey] == null) {
+          globalAttendanceMap[safeKey] = DailyRecord();
         }
         
         bool modified = false;
         if (meal == 'l' &&
-            (globalAttendanceMap[key]!.l == '' ||
-                globalAttendanceMap[key]!.l == '-')) {
-          globalAttendanceMap[key]!.l = 'A';
+            (globalAttendanceMap[safeKey]!.l == '' ||
+                globalAttendanceMap[safeKey]!.l == '-')) {
+          globalAttendanceMap[safeKey]!.l = 'A';
           modified = true;
         } else if (meal == 'd' &&
-            (globalAttendanceMap[key]!.d == '' ||
-                globalAttendanceMap[key]!.d == '-')) {
-          globalAttendanceMap[key]!.d = 'A';
+            (globalAttendanceMap[safeKey]!.d == '' ||
+                globalAttendanceMap[safeKey]!.d == '-')) {
+          globalAttendanceMap[safeKey]!.d = 'A';
           modified = true;
         }
         
         if (modified) {
-          // Direct child node write guarantees 100% reliable Firebase update on both web and mobile
-          pushTasks.add(SyncService.pushAttendanceMeal(key, meal, 'A'));
+          batchUpdates["$safeKey/$meal"] = 'A';
         }
       }
       
-      if (pushTasks.isNotEmpty) {
-        await Future.wait(pushTasks);
+      if (batchUpdates.isNotEmpty) {
+        await SyncService.pushAttendanceBatch(batchUpdates);
         globalSyncTrigger.value++;
       }
       if (mounted) {
@@ -8429,8 +10447,602 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
+  void _confirmDeletePoll(DynamicPoll poll) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text("Delete Poll?"),
+        content: Text("Are you sure you want to permanently delete '${poll.question}'?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await SyncService.deleteDynamicPoll(poll.id);
+              if (mounted) setState(() {});
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPollVotersDialog(DynamicPoll poll, [String? initialOptionFilter]) {
+    String selectedOptionFilter = initialOptionFilter ?? 'All';
+    String searchQuery = '';
+    final searchCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            List<Map<String, String>> allVoters = [];
+            poll.votes.forEach((key, option) {
+              final parts = key.split('_');
+              final room = parts.isNotEmpty ? parts[0] : '';
+              final name = parts.length > 1 ? parts.sublist(1).join('_') : key;
+              allVoters.add({
+                'key': key,
+                'room': room,
+                'name': name,
+                'option': option,
+              });
+            });
+
+            allVoters.sort((a, b) {
+              int r = (a['room'] ?? '').compareTo(b['room'] ?? '');
+              if (r != 0) return r;
+              return (a['name'] ?? '').compareTo(b['name'] ?? '');
+            });
+
+            List<Map<String, String>> optionFiltered = selectedOptionFilter == 'All'
+                ? allVoters
+                : allVoters.where((v) => v['option'] == selectedOptionFilter).toList();
+
+            final q = searchQuery.trim().toLowerCase();
+            List<Map<String, String>> filteredVoters = optionFiltered.where((v) {
+              if (q.isEmpty) return true;
+              return (v['name'] ?? '').toLowerCase().contains(q) ||
+                  (v['room'] ?? '').toLowerCase().contains(q);
+            }).toList();
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: brandGreen.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.how_to_vote_rounded, color: brandGreen, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          poll.question,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: brandDark),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          "Total ${allVoters.length} votes cast",
+                          style: const TextStyle(fontSize: 12, color: brandGray),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 10),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ChoiceChip(
+                            label: Text("All (${allVoters.length})"),
+                            selected: selectedOptionFilter == 'All',
+                            onSelected: (sel) {
+                              if (sel) setDialogState(() => selectedOptionFilter = 'All');
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          ...poll.options.map((opt) {
+                            int count = allVoters.where((v) => v['option'] == opt).length;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text("$opt ($count)"),
+                                selected: selectedOptionFilter == opt,
+                                onSelected: (sel) {
+                                  if (sel) setDialogState(() => selectedOptionFilter = opt);
+                                },
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: searchCtrl,
+                      onChanged: (val) => setDialogState(() => searchQuery = val),
+                      decoration: InputDecoration(
+                        hintText: "Search by student name or room...",
+                        hintStyle: const TextStyle(fontSize: 13, color: brandGray),
+                        prefixIcon: const Icon(Icons.search, size: 18, color: brandGray),
+                        suffixIcon: searchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear, size: 16),
+                                onPressed: () {
+                                  searchCtrl.clear();
+                                  setDialogState(() => searchQuery = '');
+                                },
+                              )
+                            : null,
+                        isDense: true,
+                        filled: true,
+                        fillColor: brandInputBg,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 300),
+                      child: filteredVoters.isEmpty
+                          ? Container(
+                              padding: const EdgeInsets.all(24),
+                              alignment: Alignment.center,
+                              child: Text(
+                                searchQuery.isNotEmpty
+                                    ? "No voters match '$searchQuery'"
+                                    : "No voters for this option yet.",
+                                style: const TextStyle(color: brandGray),
+                              ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: filteredVoters.length,
+                              separatorBuilder: (_, __) => Divider(height: 1, color: Colors.black.withValues(alpha: 0.05)),
+                              itemBuilder: (context, i) {
+                                final v = filteredVoters[i];
+                                final room = v['room'] ?? '';
+                                final name = v['name'] ?? '';
+                                final opt = v['option'] ?? '';
+
+                                return ListTile(
+                                  dense: true,
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                  leading: CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: brandGreen.withValues(alpha: 0.12),
+                                    child: Text(
+                                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                      style: const TextStyle(color: brandGreen, fontWeight: FontWeight.bold, fontSize: 12),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    name,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Text(
+                                    "Room $room",
+                                    style: const TextStyle(fontSize: 11, color: brandGray, fontWeight: FontWeight.w500),
+                                  ),
+                                  trailing: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: brandGreen.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: brandGreen.withValues(alpha: 0.3)),
+                                    ),
+                                    child: Text(
+                                      opt,
+                                      style: const TextStyle(
+                                        color: brandGreen,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _exportPollResultToPdf(poll);
+                  },
+                  icon: const Icon(Icons.picture_as_pdf, size: 16, color: brandDark),
+                  label: const Text("Download PDF", style: TextStyle(color: brandDark, fontWeight: FontWeight.bold)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text("Close"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _exportPollResultToPdf(DynamicPoll poll) async {
+    try {
+      final pdf = pw.Document();
+      final startDt = DateTime.fromMillisecondsSinceEpoch(poll.startTime);
+      final endDt = DateTime.fromMillisecondsSinceEpoch(poll.endTime);
+      final String dateStr = "${startDt.day}/${startDt.month}/${startDt.year}";
+      final String timeStr = "${formatTimeOfDay(startDt.hour, startDt.minute)} - ${formatTimeOfDay(endDt.hour, endDt.minute)}";
+      final bool isClosed = !poll.isActive || realTime.millisecondsSinceEpoch > poll.endTime;
+
+      List<List<String>> summaryRows = [];
+      int totalVotes = poll.votes.length;
+      for (var opt in poll.options) {
+        int count = poll.votes.values.where((v) => v == opt).length;
+        double pct = totalVotes > 0 ? (count / totalVotes) * 100 : 0.0;
+        summaryRows.add([opt, count.toString(), "${pct.toStringAsFixed(1)}%"]);
+      }
+
+      List<List<String>> voterRows = [];
+      int index = 1;
+      var sortedVoteEntries = poll.votes.entries.toList();
+      sortedVoteEntries.sort((a, b) {
+        final roomA = a.key.split('_').first;
+        final roomB = b.key.split('_').first;
+        int rComp = roomA.compareTo(roomB);
+        if (rComp != 0) return rComp;
+        return a.key.compareTo(b.key);
+      });
+
+      for (var entry in sortedVoteEntries) {
+        final parts = entry.key.split('_');
+        final room = parts.isNotEmpty ? parts[0] : '';
+        final name = parts.length > 1 ? parts.sublist(1).join('_') : entry.key;
+        voterRows.add([
+          (index++).toString(),
+          room,
+          name,
+          entry.value,
+        ]);
+      }
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          header: (pw.Context ctx) => pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text("HOSTEL MESS MANAGEMENT", style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey800)),
+                  pw.Text(globalHostelMode == 'boys' ? "BOYS HOSTEL" : "GIRLS HOSTEL", style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: PdfColors.green700)),
+                ],
+              ),
+              pw.Divider(thickness: 1, color: PdfColors.grey400),
+              pw.SizedBox(height: 8),
+            ],
+          ),
+          build: (pw.Context ctx) {
+            return [
+              pw.Text("Poll Voting Report", style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.Text("Question: ${poll.question}", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blueGrey900)),
+              pw.SizedBox(height: 4),
+              pw.Text("Date: $dateStr  |  Time: $timeStr  |  Status: ${isClosed ? 'Closed' : 'Active/Live'}", style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+              pw.SizedBox(height: 16),
+              pw.Text("Voting Summary", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              pw.TableHelper.fromTextArray(
+                headers: ["Option", "Votes Count", "Percentage"],
+                data: summaryRows,
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey700),
+                cellHeight: 22,
+                cellAlignments: {
+                  0: pw.Alignment.centerLeft,
+                  1: pw.Alignment.center,
+                  2: pw.Alignment.centerRight,
+                },
+              ),
+              pw.SizedBox(height: 8),
+              pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.Text("Total Votes Cast: $totalVotes", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text("Voter Students List (${voterRows.length} Students)", style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 6),
+              if (voterRows.isEmpty)
+                pw.Text("No votes cast in this poll yet.", style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey600))
+              else
+                pw.TableHelper.fromTextArray(
+                  headers: ["Sr.", "Room No", "Student Name", "Vote Cast"],
+                  data: voterRows,
+                  headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                  headerDecoration: const pw.BoxDecoration(color: PdfColors.blueGrey800),
+                  cellHeight: 20,
+                  cellAlignments: {
+                    0: pw.Alignment.center,
+                    1: pw.Alignment.center,
+                    2: pw.Alignment.centerLeft,
+                    3: pw.Alignment.center,
+                  },
+                ),
+            ];
+          },
+          footer: (pw.Context ctx) => pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text("Generated on ${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year} by Hostel Mess App", style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+              pw.Text("Page ${ctx.pageNumber} of ${ctx.pagesCount}", style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+            ],
+          ),
+        ),
+      );
+
+      final Uint8List pdfBytes = await pdf.save();
+      final String cleanTitle = poll.question.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final String filename = "Poll_${cleanTitle.length > 20 ? cleanTitle.substring(0, 20) : cleanTitle}_${poll.id}.pdf";
+      await Printing.sharePdf(bytes: pdfBytes, filename: filename);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("PDF Export Error: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showEditPollDialog(DynamicPoll poll) {
+    final qCtrl = TextEditingController(text: poll.question);
+    final List<TextEditingController> optCtrls =
+        poll.options.map((o) => TextEditingController(text: o)).toList();
+    if (optCtrls.isEmpty) {
+      optCtrls.add(TextEditingController(text: "Yes"));
+      optCtrls.add(TextEditingController(text: "No"));
+    }
+    DateTime initialStart = DateTime.fromMillisecondsSinceEpoch(poll.startTime);
+    DateTime initialEnd = DateTime.fromMillisecondsSinceEpoch(poll.endTime);
+    TimeOfDay startTime = TimeOfDay.fromDateTime(initialStart);
+    TimeOfDay endTime = TimeOfDay.fromDateTime(initialEnd);
+    bool isActive = poll.isActive;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('Edit Poll', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: brandDark)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: qCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Question',
+                        filled: true,
+                        fillColor: brandInputBg,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)), borderSide: BorderSide.none),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      "Poll Options:",
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark),
+                    ),
+                    const SizedBox(height: 8),
+                    ...List.generate(optCtrls.length, (idx) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: optCtrls[idx],
+                                decoration: InputDecoration(
+                                  labelText: "Option ${idx + 1}",
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: brandInputBg,
+                                  border: const OutlineInputBorder(
+                                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (optCtrls.length > 2)
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    optCtrls[idx].dispose();
+                                    optCtrls.removeAt(idx);
+                                  });
+                                },
+                              ),
+                          ],
+                        ),
+                      );
+                    }),
+                    TextButton.icon(
+                      onPressed: () {
+                        setDialogState(() {
+                          optCtrls.add(TextEditingController());
+                        });
+                      },
+                      icon: const Icon(Icons.add_circle_outline, size: 18, color: brandGreen),
+                      label: const Text("Add Option", style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold)),
+                    ),
+                    const Divider(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Start Time:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: brandDark)),
+                        TextButton(
+                          onPressed: () async {
+                            final t = await showTimePicker(
+                              context: context,
+                              initialTime: startTime,
+                            );
+                            if (t != null) setDialogState(() => startTime = t);
+                          },
+                          child: Text(startTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold, color: brandGreen)),
+                        ),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("End Time:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: brandDark)),
+                        TextButton(
+                          onPressed: () async {
+                            final t = await showTimePicker(
+                              context: context,
+                              initialTime: endTime,
+                            );
+                            if (t != null) setDialogState(() => endTime = t);
+                          },
+                          child: Text(endTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold, color: brandGreen)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text("Poll Active / Open", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: brandDark)),
+                      value: isActive,
+                      activeColor: brandGreen,
+                      onChanged: (val) => setDialogState(() => isActive = val),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel', style: TextStyle(color: brandGray, fontWeight: FontWeight.bold)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: () async {
+                    if (qCtrl.text.trim().isEmpty) return;
+                    final validOpts = optCtrls
+                        .map((c) => c.text.trim())
+                        .where((t) => t.isNotEmpty)
+                        .toList();
+                    if (validOpts.length < 2) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Please enter at least 2 options"),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+                    final now = realTime;
+                    final startDt = DateTime(
+                      now.year,
+                      now.month,
+                      now.day,
+                      startTime.hour,
+                      startTime.minute,
+                    );
+                    final endDt = DateTime(
+                      now.year,
+                      now.month,
+                      now.day,
+                      endTime.hour,
+                      endTime.minute,
+                    );
+                    if (!endDt.isAfter(startDt)) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("End time must be after Start time"),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
+                    poll.question = qCtrl.text.trim();
+                    poll.options = validOpts;
+                    poll.startTime = startDt.millisecondsSinceEpoch;
+                    poll.endTime = endDt.millisecondsSinceEpoch;
+                    poll.isActive = isActive;
+
+                    Navigator.pop(context);
+                    await SyncService.updateDynamicPoll(poll);
+                    if (mounted) {
+                      setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Poll updated successfully!"),
+                          backgroundColor: brandGreen,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showCreatePollDialog() {
     final qCtrl = TextEditingController();
+    final List<TextEditingController> optCtrls = [
+      TextEditingController(text: "Yes"),
+      TextEditingController(text: "No"),
+    ];
     TimeOfDay startTime = TimeOfDay.now();
     TimeOfDay endTime = TimeOfDay(
       hour: math.min(startTime.hour + 2, 23),
@@ -8442,7 +11054,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Create New Poll'),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Text('Create New Poll', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: brandDark)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -8450,31 +11063,117 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   children: [
                     TextField(
                       controller: qCtrl,
-                      decoration: const InputDecoration(labelText: 'Question'),
+                      decoration: const InputDecoration(
+                        labelText: 'Question',
+                        hintText: "e.g. Today's Lunch Menu Choice?",
+                        filled: true,
+                        fillColor: brandInputBg,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(10)), borderSide: BorderSide.none),
+                      ),
                     ),
                     const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          ActionChip(
+                            label: const Text("Lunch?"),
+                            onPressed: () {
+                              qCtrl.text = "Today's Lunch?";
+                              setDialogState(() {});
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          ActionChip(
+                            label: const Text("Dinner?"),
+                            onPressed: () {
+                              qCtrl.text = "Today's Dinner?";
+                              setDialogState(() {});
+                            },
+                          ),
+                          const SizedBox(width: 6),
+                          ActionChip(
+                            label: const Text("Special Menu?"),
+                            onPressed: () {
+                              qCtrl.text = "Sunday Special Dish?";
+                              setDialogState(() {});
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        TextButton(
-                          onPressed: () {
-                            qCtrl.text = "Today's Lunch?";
-                            setDialogState(() {});
-                          },
-                          child: const Text("Lunch?"),
+                        const Text(
+                          "Poll Options:",
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark),
                         ),
                         TextButton(
                           onPressed: () {
-                            qCtrl.text = "Today's Dinner?";
-                            setDialogState(() {});
+                            setDialogState(() {
+                              for (var c in optCtrls) {
+                                c.dispose();
+                              }
+                              optCtrls.clear();
+                              optCtrls.add(TextEditingController(text: "Yes"));
+                              optCtrls.add(TextEditingController(text: "No"));
+                            });
                           },
-                          child: const Text("Dinner?"),
+                          child: const Text("Reset Yes/No", style: TextStyle(fontSize: 12, color: brandGray)),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 4),
+                    ...List.generate(optCtrls.length, (idx) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: optCtrls[idx],
+                                decoration: InputDecoration(
+                                  labelText: "Option ${idx + 1}",
+                                  isDense: true,
+                                  filled: true,
+                                  fillColor: brandInputBg,
+                                  border: const OutlineInputBorder(
+                                    borderRadius: BorderRadius.all(Radius.circular(8)),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (optCtrls.length > 2)
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent, size: 20),
+                                onPressed: () {
+                                  setDialogState(() {
+                                    optCtrls[idx].dispose();
+                                    optCtrls.removeAt(idx);
+                                  });
+                                },
+                              ),
+                          ],
+                        ),
+                      );
+                    }),
+                    TextButton.icon(
+                      onPressed: () {
+                        setDialogState(() {
+                          optCtrls.add(TextEditingController());
+                        });
+                      },
+                      icon: const Icon(Icons.add_circle_outline, size: 18, color: brandGreen),
+                      label: const Text("Add Option", style: TextStyle(color: brandGreen, fontWeight: FontWeight.bold)),
+                    ),
+                    const Divider(height: 20),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("Start: "),
+                        const Text("Start Time:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: brandDark)),
                         TextButton(
                           onPressed: () async {
                             final t = await showTimePicker(
@@ -8483,13 +11182,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             );
                             if (t != null) setDialogState(() => startTime = t);
                           },
-                          child: Text(startTime.format(context)),
+                          child: Text(startTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold, color: brandGreen)),
                         ),
                       ],
                     ),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text("End: "),
+                        const Text("End Time:", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: brandDark)),
                         TextButton(
                           onPressed: () async {
                             final t = await showTimePicker(
@@ -8498,7 +11198,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             );
                             if (t != null) setDialogState(() => endTime = t);
                           },
-                          child: Text(endTime.format(context)),
+                          child: Text(endTime.format(context), style: const TextStyle(fontWeight: FontWeight.bold, color: brandGreen)),
                         ),
                       ],
                     ),
@@ -8508,11 +11208,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  child: const Text('Cancel', style: TextStyle(color: brandGray, fontWeight: FontWeight.bold)),
                 ),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: brandGreen,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
                   onPressed: () async {
                     if (qCtrl.text.trim().isEmpty) return;
+                    final validOpts = optCtrls
+                        .map((c) => c.text.trim())
+                        .where((t) => t.isNotEmpty)
+                        .toList();
+                    if (validOpts.length < 2) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Please enter at least 2 options"),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
                     final now = realTime;
                     final startDt = DateTime(
                       now.year,
@@ -8540,7 +11258,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     final poll = DynamicPoll(
                       id: realTime.millisecondsSinceEpoch.toString(),
                       question: qCtrl.text.trim(),
-                      options: ["Yes", "No"],
+                      options: validOpts,
                       startTime: startDt.millisecondsSinceEpoch,
                       endTime: endDt.millisecondsSinceEpoch,
                       isActive: true,
@@ -8552,9 +11270,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       "New Poll: ${poll.question}",
                       "Open the app to cast your vote.",
                     );
-                    setState(() {});
+                    if (mounted) setState(() {});
                   },
-                  child: const Text('Create'),
+                  child: const Text('Create', style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -8839,41 +11557,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         title: const Text('Lunch'),
                         activeColor: brandGreen,
                         value: globalEntryL,
-                        onChanged: (v) async {
-                          if (SyncService.isSwitchCooldown) return;
-                          SyncService.setSwitchCooldown(true);
-                          
-                          setState(() => globalEntryL = v);
-                          if (v == true) {
-                            NotificationService.sendPushNotificationToStudents(
-                              "Lunch Time",
-                              "Mess Open",
-                            );
-                          } else {
-                            await _closeMessAndMarkAbsent('l');
-                          }
-                          await SyncService.pushSwitchesNow();
-                        },
+                        onChanged: (v) => _toggleMessEntryWithConfirmation('l', v),
                       ),
                       SwitchListTile(
                         title: const Text('Dinner'),
                         activeColor: brandGreen,
                         value: globalEntryD,
-                        onChanged: (v) async {
-                          if (SyncService.isSwitchCooldown) return;
-                          SyncService.setSwitchCooldown(true);
-                          
-                          setState(() => globalEntryD = v);
-                          if (v == true) {
-                            NotificationService.sendPushNotificationToStudents(
-                              "Dinner Time",
-                              "Mess Open",
-                            );
-                          } else {
-                            await _closeMessAndMarkAbsent('d');
-                          }
-                          await SyncService.pushSwitchesNow();
-                        },
+                        onChanged: (v) => _toggleMessEntryWithConfirmation('d', v),
                       ),
                     ],
                   ),
@@ -8968,9 +11658,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         ),
                         title: Row(
                           children: [
-                            const Text(
-                              'View Student Complaints',
-                              style: TextStyle(fontWeight: FontWeight.w500),
+                            Text(
+                              'View Complaints (${globalHostelMode == 'boys' ? 'Boys' : 'Girls'})',
+                              style: const TextStyle(fontWeight: FontWeight.w500),
                             ),
                             const Spacer(),
                             if (unread > 0)
@@ -9270,83 +11960,93 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
-            title: const Text(
-              "New Complaint",
-              style: TextStyle(color: brandDark, fontWeight: FontWeight.bold),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+            title: Row(
               children: [
-                TextField(
-                  controller: titleCtrl,
-                  decoration: InputDecoration(
-                    labelText: "Title",
-                    filled: true,
-                    fillColor: brandInputBg,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+                const Icon(Icons.rate_review, color: brandGreen),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "New Complaint (${globalHostelMode == 'boys' ? 'Boys' : 'Girls'})",
+                    style: const TextStyle(color: brandDark, fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: msgCtrl,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    labelText: "Description",
-                    filled: true,
-                    fillColor: brandInputBg,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: isUploading
-                          ? null
-                          : () async {
-                              final XFile? image = await _picker.pickImage(
-                                source: ImageSource.gallery,
-                                imageQuality: 40,
-                                maxWidth: 800,
-                              );
-                              if (image != null) {
-                                setStateSB(() {
-                                  isUploading = true;
-                                });
-                                final bytes = await image.readAsBytes();
-                                final url = await SyncService.uploadImage(
-                                  bytes,
-                                );
-                                setStateSB(() {
-                                  isUploading = false;
-                                  if (url != null) {
-                                    localComplaintImageUrl = url;
-                                  }
-                                });
-                              }
-                            },
-                      icon: const Icon(Icons.photo),
-                      label: Text(
-                        isUploading ? "Uploading..." : "Attach Photo",
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: brandInputBg,
-                        foregroundColor: brandDark,
-                        elevation: 0,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (localComplaintImageUrl != null)
-                      const Icon(Icons.check_circle, color: Colors.green),
-                  ],
                 ),
               ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: titleCtrl,
+                    decoration: InputDecoration(
+                      labelText: "Title",
+                      filled: true,
+                      fillColor: brandInputBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: msgCtrl,
+                    maxLines: 4,
+                    decoration: InputDecoration(
+                      labelText: "Description",
+                      filled: true,
+                      fillColor: brandInputBg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: isUploading
+                            ? null
+                            : () async {
+                                final XFile? image = await _picker.pickImage(
+                                  source: ImageSource.gallery,
+                                  imageQuality: 40,
+                                  maxWidth: 800,
+                                );
+                                if (image != null) {
+                                  setStateSB(() {
+                                    isUploading = true;
+                                  });
+                                  final bytes = await image.readAsBytes();
+                                  final url = await SyncService.uploadImage(
+                                    bytes,
+                                  );
+                                  setStateSB(() {
+                                    isUploading = false;
+                                    if (url != null) {
+                                      localComplaintImageUrl = url;
+                                    }
+                                  });
+                                }
+                              },
+                        icon: const Icon(Icons.photo),
+                        label: Text(
+                          isUploading ? "Uploading..." : "Attach Photo",
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: brandInputBg,
+                          foregroundColor: brandDark,
+                          elevation: 0,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (localComplaintImageUrl != null)
+                        const Icon(Icons.check_circle, color: Colors.green),
+                    ],
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(
@@ -9418,7 +12118,16 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
     return Scaffold(
       backgroundColor: brandBg,
       appBar: AppBar(
-        title: const Text("Mess Complaints"),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Mess Complaints", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              globalHostelMode == 'boys' ? "👦 Boys Hostel Mess" : "👧 Girls Hostel Mess",
+              style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
         backgroundColor: brandGreen,
         foregroundColor: Colors.white,
       ),
@@ -9534,12 +12243,51 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                             elevation: 0,
                             child: ListTile(
                               contentPadding: const EdgeInsets.all(16),
-                              title: Text(
-                                c.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: brandDark,
-                                ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      c.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: brandDark,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: globalHostelMode == 'boys'
+                                          ? const Color(0xFFEFF6FF)
+                                          : const Color(0xFFFDF2F8),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: globalHostelMode == 'boys'
+                                            ? const Color(0xFF93C5FD)
+                                            : const Color(0xFFF472B6),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          globalHostelMode == 'boys' ? Icons.male : Icons.female,
+                                          size: 13,
+                                          color: globalHostelMode == 'boys' ? const Color(0xFF1D4ED8) : const Color(0xFFBE185D),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          globalHostelMode == 'boys' ? "Boys Mess" : "Girls Mess",
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: globalHostelMode == 'boys' ? const Color(0xFF1D4ED8) : const Color(0xFFBE185D),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -9839,14 +12587,91 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
   Widget build(BuildContext context) {
     final canManage = widget.adminPhone == null ||
         checkAdminPermission(widget.adminPhone!, 'can_manage_complaint_window');
+    final currentAdmin = widget.adminPhone != null
+        ? globalAdmins.cast<AdminUser?>().firstWhere(
+            (a) => a?.phone == widget.adminPhone,
+            orElse: () => null,
+          )
+        : null;
+    final scope = currentAdmin?.hostelScope.trim().toLowerCase() ?? cachedAdminScope?.trim().toLowerCase() ?? 'both';
+    final bool canSwitchHostel = (scope == 'both');
 
     return Scaffold(
       backgroundColor: brandBg,
       appBar: AppBar(
-        title: const Text("Student Complaints"),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Student Complaints", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              globalHostelMode == 'boys' ? "👦 Boys Hostel Mess" : "👧 Girls Hostel Mess",
+              style: const TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
         backgroundColor: brandGreen,
         foregroundColor: Colors.white,
         actions: [
+          if (canSwitchHostel)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    onTap: () async {
+                      if (globalHostelMode != 'boys') {
+                        await SyncService.switchMode('boys');
+                        if (mounted) setState(() {});
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: globalHostelMode == 'boys' ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        "Boys",
+                        style: TextStyle(
+                          color: globalHostelMode == 'boys' ? brandGreen : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () async {
+                      if (globalHostelMode != 'girls') {
+                        await SyncService.switchMode('girls');
+                        if (mounted) setState(() {});
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: globalHostelMode == 'girls' ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        "Girls",
+                        style: TextStyle(
+                          color: globalHostelMode == 'girls' ? brandGreen : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (canManage)
             IconButton(
               icon: const Icon(Icons.tune),
@@ -9960,12 +12785,51 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
                                       )
                                     : const Icon(Icons.person, color: Colors.white),
                               ),
-                              title: Text(
-                                c.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: brandDark,
-                                ),
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      c.title,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: brandDark,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: globalHostelMode == 'boys'
+                                          ? const Color(0xFFEFF6FF)
+                                          : const Color(0xFFFDF2F8),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: globalHostelMode == 'boys'
+                                            ? const Color(0xFF93C5FD)
+                                            : const Color(0xFFF472B6),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          globalHostelMode == 'boys' ? Icons.male : Icons.female,
+                                          size: 13,
+                                          color: globalHostelMode == 'boys' ? const Color(0xFF1D4ED8) : const Color(0xFFBE185D),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          globalHostelMode == 'boys' ? "Boys Mess" : "Girls Mess",
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: globalHostelMode == 'boys' ? const Color(0xFF1D4ED8) : const Color(0xFFBE185D),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -10204,117 +13068,451 @@ class MealPassScreen extends StatefulWidget {
   State<MealPassScreen> createState() => _MealPassScreenState();
 }
 
-class _MealPassScreenState extends State<MealPassScreen> {
+class _MealPassScreenState extends State<MealPassScreen> with SingleTickerProviderStateMixin {
   late Timer _timer;
   DateTime _now = realTime;
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.85, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _now = realTime;
-      });
+      if (mounted) {
+        setState(() {
+          _now = realTime;
+        });
+      }
     });
   }
 
   @override
   void dispose() {
     _timer.cancel();
+    _pulseController.dispose();
     super.dispose();
   }
 
-  String _formatTime(DateTime dt) {
+  String _formatDate(DateTime dt, DayPassTheme theme) {
     String pad(int n) => n.toString().padLeft(2, '0');
-    String period = dt.hour >= 12 ? 'PM' : 'AM';
-    int hour12 = dt.hour % 12;
-    if (hour12 == 0) hour12 = 12;
-    return "${pad(dt.day)}/${pad(dt.month)}/${dt.year} | ${pad(hour12)}:${pad(dt.minute)}:${pad(dt.second)} $period";
+    return "${theme.dayName.toUpperCase()}, ${pad(dt.day)} ${_getMonthName(dt.month).toUpperCase()} ${dt.year}";
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = getTodayPassTheme(_now);
+    String pad(int n) => n.toString().padLeft(2, '0');
+    final String period = _now.hour >= 12 ? 'PM' : 'AM';
+    int hour12 = _now.hour % 12;
+    if (hour12 == 0) hour12 = 12;
+    final String timeStr = "${pad(hour12)}:${pad(_now.minute)}:${pad(_now.second)} $period";
+
     return Scaffold(
-      backgroundColor: Colors.green.shade600,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              theme.primaryColor,
+              theme.secondaryColor,
+              theme.badgeBgColor,
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
         ),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.check_circle, color: Colors.white, size: 100),
-            const SizedBox(height: 16),
-            Text(
-              "${widget.mealName.toUpperCase()} APPROVED",
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 40),
-            Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 4),
-              ),
-              child: CircleAvatar(
-                radius: 60,
-                child: (widget.photoUrl != null && widget.photoUrl!.isNotEmpty)
-                    ? ClipOval(
-                        child: Image.network(
-                          widget.photoUrl!,
-                          fit: BoxFit.cover,
-                          width: 120,
-                          height: 120,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(Icons.person, color: Colors.white),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Top Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: const BoxDecoration(
+                          color: Colors.black26,
+                          shape: BoxShape.circle,
                         ),
-                      )
-                    : const Icon(Icons.person, color: Colors.white),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              widget.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Text(
-              "Room: ${widget.roomNo}",
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 40),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Text(
-                _formatTime(_now),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1,
+                        child: const Icon(Icons.close, color: Colors.white, size: 20),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                    // Live pulsing indicator
+                    AnimatedBuilder(
+                      animation: _pulseAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black38,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.greenAccent.withValues(alpha: 0.6),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Transform.scale(
+                                scale: _pulseAnimation.value,
+                                child: Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.greenAccent,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.greenAccent,
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                "LIVE TICKING PASS",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 40), // Balance close button
+                  ],
                 ),
               ),
-            ),
-          ],
+
+              // Scrollable Content
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // Day & Meal Banner
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  theme.emoji,
+                                  style: const TextStyle(fontSize: 18),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "${theme.dayName.toUpperCase()} PASS (${theme.dayNameGu})",
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Approved Pill
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.verified, color: Colors.greenAccent, size: 18),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "${widget.mealName.toUpperCase()} APPROVED",
+                                  style: const TextStyle(
+                                    color: Colors.greenAccent,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Extra Large Photo
+                          Container(
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.35),
+                                  blurRadius: 25,
+                                  spreadRadius: 4,
+                                  offset: const Offset(0, 8),
+                                ),
+                                BoxShadow(
+                                  color: theme.accentColor.withValues(alpha: 0.4),
+                                  blurRadius: 15,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                              border: Border.all(color: Colors.white, width: 4.5),
+                            ),
+                            child: CircleAvatar(
+                              radius: 75,
+                              backgroundColor: Colors.white.withValues(alpha: 0.15),
+                              child: (widget.photoUrl != null && widget.photoUrl!.isNotEmpty)
+                                  ? ClipOval(
+                                      child: Image.network(
+                                        widget.photoUrl!,
+                                        fit: BoxFit.cover,
+                                        width: 150,
+                                        height: 150,
+                                        errorBuilder: (context, error, stackTrace) =>
+                                            const Icon(Icons.person, color: Colors.white, size: 85),
+                                      ),
+                                    )
+                                  : const Icon(Icons.person, color: Colors.white, size: 85),
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+
+                          // Extra Large Student Name
+                          Text(
+                            widget.name,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.6,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black45,
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Extra Large Room Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.meeting_room_rounded, color: theme.primaryColor, size: 24),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "ROOM: ${widget.roomNo}",
+                                  style: TextStyle(
+                                    color: theme.primaryColor,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+
+                          // Large Date Display Box
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.calendar_month_rounded, color: theme.accentColor, size: 22),
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Text(
+                                    _formatDate(_now, theme),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.8,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Extra Large Live Digital Clock Box
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: theme.accentColor.withValues(alpha: 0.45),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.access_time_filled, color: Colors.amberAccent, size: 28),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      timeStr,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 38,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 2.5,
+                                        fontFamily: 'monospace',
+                                        shadows: [
+                                          Shadow(
+                                            color: Colors.black,
+                                            blurRadius: 10,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  "LIVE TIME • RUNNING SECONDS",
+                                  style: TextStyle(
+                                    color: theme.accentColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Anti-Screenshot & Security Notice
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.security, color: Colors.white70, size: 14),
+                                const SizedBox(width: 6),
+                                Text(
+                                  "PASS ID: #${widget.roomNo}-${pad(_now.minute)}${pad(_now.second)} • NO SCREENSHOTS",
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+
+                          // Done / Back Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: theme.primaryColor,
+                                elevation: 4,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.check_circle, size: 22),
+                              label: const Text(
+                                "Done / પાછા જાઓ",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -10500,43 +13698,45 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                   ),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Enter the 20-digit password to enable editing mode:",
-                    style: TextStyle(fontSize: 13, color: brandGray),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: passCtrl,
-                    obscureText: isObscured,
-                    keyboardType: TextInputType.number,
-                    maxLength: 20,
-                    decoration: InputDecoration(
-                      labelText: "20-Digit Password",
-                      errorText: errorText,
-                      filled: true,
-                      fillColor: brandInputBg,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          isObscured ? Icons.visibility_off : Icons.visibility,
-                          color: brandGray,
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Enter the 20-digit password to enable editing mode:",
+                      style: TextStyle(fontSize: 13, color: brandGray),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: passCtrl,
+                      obscureText: isObscured,
+                      keyboardType: TextInputType.number,
+                      maxLength: 20,
+                      decoration: InputDecoration(
+                        labelText: "20-Digit Password",
+                        errorText: errorText,
+                        filled: true,
+                        fillColor: brandInputBg,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
                         ),
-                        onPressed: () {
-                          setDialogState(() {
-                            isObscured = !isObscured;
-                          });
-                        },
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            isObscured ? Icons.visibility_off : Icons.visibility,
+                            color: brandGray,
+                          ),
+                          onPressed: () {
+                            setDialogState(() {
+                              isObscured = !isObscured;
+                            });
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -10608,38 +13808,40 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "WARNING: This will wipe all students, attendance, complaints, and notices! Enter the master password to proceed:",
-                    style: TextStyle(fontSize: 13, color: brandGray),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: passCtrl,
-                    obscureText: isObscured,
-                    decoration: InputDecoration(
-                      labelText: "Master Password",
-                      errorText: errorText,
-                      filled: true,
-                      fillColor: brandInputBg,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          isObscured ? Icons.visibility_off : Icons.visibility,
-                          color: brandGray,
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "WARNING: This will wipe all students, attendance, complaints, and notices! Enter the master password to proceed:",
+                      style: TextStyle(fontSize: 13, color: brandGray),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: passCtrl,
+                      obscureText: isObscured,
+                      decoration: InputDecoration(
+                        labelText: "Master Password",
+                        errorText: errorText,
+                        filled: true,
+                        fillColor: brandInputBg,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
                         ),
-                        onPressed: () =>
-                            setDialogState(() => isObscured = !isObscured),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            isObscured ? Icons.visibility_off : Icons.visibility,
+                            color: brandGray,
+                          ),
+                          onPressed: () =>
+                              setDialogState(() => isObscured = !isObscured),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(
@@ -11019,10 +14221,11 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 if (isEditingEnabled && !isEmpty) {
                   return InkWell(
                     onTap: () async {
-                      String key =
+                      String rawKey =
                           "${_selectedDailyDate.year}-${_selectedDailyDate.month}-${_selectedDailyDate.day}_${room}_${name}";
+                      String key = attendanceSafeKey(rawKey);
                       DailyRecord rec =
-                          globalAttendanceMap[key] ?? DailyRecord();
+                          globalAttendanceMap[key] ?? globalAttendanceMap[rawKey] ?? DailyRecord();
                       setState(() {
                         if (mealType == 'L') {
                           rec.l = (rec.l == 'P') ? 'A' : 'P';
@@ -11375,10 +14578,12 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                   return InkWell(
                                     onTap: () {
                                       setModalState(() async {
-                                        String key =
+                                        String rawKey =
                                             "${_selectedMonth.year}-${_selectedMonth.month}-${h['day']}_${student.roomNo}_${student.name}";
+                                        String key = attendanceSafeKey(rawKey);
                                         DailyRecord rec =
                                             globalAttendanceMap[key] ??
+                                            globalAttendanceMap[rawKey] ??
                                             DailyRecord();
                                         if (mealType == 'L') {
                                           rec.l = (rec.l == 'P') ? 'A' : 'P';
@@ -12600,22 +15805,24 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(student == null ? 'Add Student' : 'Edit Student'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameCtrl,
-              decoration: const InputDecoration(labelText: 'Name'),
-            ),
-            TextField(
-              controller: roomCtrl,
-              decoration: const InputDecoration(labelText: 'Room No'),
-            ),
-            TextField(
-              controller: emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              TextField(
+                controller: roomCtrl,
+                decoration: const InputDecoration(labelText: 'Room No'),
+              ),
+              TextField(
+                controller: emailCtrl,
+                decoration: const InputDecoration(labelText: 'Email'),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -12749,23 +15956,25 @@ class _ManageStudentsScreenState extends State<ManageStudentsScreen> {
                                   builder: (context, setState) {
                                     return AlertDialog(
                                       title: const Text('Confirm Delete'),
-                                      content: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text('Delete ${s.name}?'),
-                                          const SizedBox(height: 10),
-                                          TextField(
-                                            autofocus: true,
-                                            onChanged: (val) {
-                                              setState(() {
-                                                deleteText = val;
-                                              });
-                                            },
-                                            decoration: const InputDecoration(
-                                              border: OutlineInputBorder(),
+                                      content: SingleChildScrollView(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text('Delete ${s.name}?'),
+                                            const SizedBox(height: 10),
+                                            TextField(
+                                              autofocus: true,
+                                              onChanged: (val) {
+                                                setState(() {
+                                                  deleteText = val;
+                                                });
+                                              },
+                                              decoration: const InputDecoration(
+                                                border: OutlineInputBorder(),
+                                              ),
                                             ),
-                                          ),
-                                        ],
+                                          ],
+                                        ),
                                       ),
                                       actions: [
                                         TextButton(
