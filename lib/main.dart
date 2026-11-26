@@ -1847,13 +1847,15 @@ class SyncService {
     }
   }
 
-  /// Delete notice from Firebase
+  /// Delete notice from Firebase and Supabase bridge
   static Future<void> deleteNotice(String id) async {
     try {
       final safeId = id.replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
       globalNotices.removeWhere((n) => n.id == id || n.id == safeId);
       globalSyncTrigger.value++;
       await _dbRef.child('notices').child(safeId).remove();
+      _deleteNoticeFromSupabase(id);
+      _deleteNoticeFromSupabase(safeId);
     } catch (e) {
       print("Delete notice error: $e");
     }
@@ -1871,6 +1873,8 @@ class SyncService {
       await saveAdminHiddenComplaints();
       globalSyncTrigger.value++;
       await _dbRef.child('complaints').child(safeId).remove();
+      _deleteComplaintFromSupabase(id);
+      _deleteComplaintFromSupabase(safeId);
     } catch (e) {
       print("Delete complaint error: $e");
     }
@@ -2039,10 +2043,131 @@ class SyncService {
         await saveRegisteredStudents();
         _hasDownloadedOnce = true;
       }
+      await _fetchSupabaseFallbacks();
       globalSyncTrigger.value++;
     } catch (e) {
       print("Manual Fetch Error: $e");
     }
+  }
+
+  static const String _supabaseUrl = 'https://whliroffubcqsalxdqfs.supabase.co/rest/v1';
+  static const String _supabaseKey = 'sb_publishable_dWnrma0eBAfoHidi0zvTdQ_arcCmFEe';
+  static Map<String, String> get _supabaseHeaders => {
+    'apikey': _supabaseKey,
+    'Authorization': 'Bearer $_supabaseKey',
+    'Content-Type': 'application/json',
+    'Prefer': 'resolution=merge-duplicates',
+  };
+
+  static Future<void> _syncNoticeToSupabase(NoticeItem n, String? targetHostel) async {
+    try {
+      final dio = Dio();
+      final body = {
+        'id': n.id,
+        'title': n.title,
+        'message': n.message,
+        'date': n.date.toIso8601String(),
+      };
+      if (targetHostel == 'both') {
+        await dio.post('$_supabaseUrl/notices_boys', data: body, options: Options(headers: _supabaseHeaders));
+        await dio.post('$_supabaseUrl/notices_girls', data: body, options: Options(headers: _supabaseHeaders));
+      } else if (targetHostel == 'girls') {
+        await dio.post('$_supabaseUrl/notices_girls', data: body, options: Options(headers: _supabaseHeaders));
+      } else {
+        await dio.post('$_supabaseUrl/notices_boys', data: body, options: Options(headers: _supabaseHeaders));
+      }
+    } catch (e) {
+      debugPrint("Supabase notice dual-sync error: $e");
+    }
+  }
+
+  static Future<void> _syncComplaintToSupabase(ComplaintItem c) async {
+    try {
+      final dio = Dio();
+      final body = {
+        'id': c.id,
+        'title': c.title,
+        'description': c.description,
+        'date': c.date.toIso8601String(),
+        'student_name': c.studentName,
+        'student_room': c.studentRoom,
+        'image_url': c.complaintImageUrl ?? '',
+      };
+      await dio.post('$_supabaseUrl/complaints_$globalHostelMode', data: body, options: Options(headers: _supabaseHeaders));
+    } catch (e) {
+      debugPrint("Supabase complaint dual-sync error: $e");
+    }
+  }
+
+  static Future<void> _deleteNoticeFromSupabase(String id) async {
+    try {
+      final dio = Dio();
+      await dio.delete('$_supabaseUrl/notices_boys?id=eq.$id', options: Options(headers: _supabaseHeaders));
+      await dio.delete('$_supabaseUrl/notices_girls?id=eq.$id', options: Options(headers: _supabaseHeaders));
+    } catch (_) {}
+  }
+
+  static Future<void> _deleteComplaintFromSupabase(String id) async {
+    try {
+      final dio = Dio();
+      await dio.delete('$_supabaseUrl/complaints_$globalHostelMode?id=eq.$id', options: Options(headers: _supabaseHeaders));
+    } catch (_) {}
+  }
+
+  static Future<void> _fetchSupabaseFallbacks() async {
+    try {
+      final dio = Dio();
+      dio.options.receiveTimeout = const Duration(seconds: 4);
+      dio.options.sendTimeout = const Duration(seconds: 4);
+      // Fetch Supabase notices
+      final nRes = await dio.get('$_supabaseUrl/notices_$globalHostelMode?select=*', options: Options(headers: _supabaseHeaders));
+      if (nRes.data is List) {
+        bool changed = false;
+        for (var item in nRes.data) {
+          final id = item['id']?.toString() ?? '';
+          if (id.isNotEmpty && !globalNotices.any((n) => n.id == id)) {
+            globalNotices.add(NoticeItem(
+              id,
+              item['title']?.toString() ?? '',
+              item['message']?.toString() ?? '',
+              DateTime.tryParse(item['date']?.toString() ?? '') ?? realTime,
+            ));
+            changed = true;
+          }
+        }
+        if (changed) {
+          globalNotices.sort((a, b) => b.date.compareTo(a.date));
+        }
+      }
+      // Fetch Supabase complaints
+      final cRes = await dio.get('$_supabaseUrl/complaints_$globalHostelMode?select=*', options: Options(headers: _supabaseHeaders));
+      if (cRes.data is List) {
+        bool changed = false;
+        for (var item in cRes.data) {
+          final id = item['id']?.toString() ?? '';
+          if (id.isNotEmpty && !globalComplaints.any((c) => c.id == id)) {
+            String? sPhoto;
+            try {
+              sPhoto = globalRegisteredStudents.firstWhere((s) => s.roomNo == item['student_room'] && s.name == item['student_name']).photoUrl;
+            } catch (_) {}
+            globalComplaints.add(ComplaintItem(
+              id,
+              item['title']?.toString() ?? '',
+              item['description']?.toString() ?? '',
+              DateTime.tryParse(item['date']?.toString() ?? '') ?? realTime,
+              item['student_name']?.toString() ?? '',
+              item['student_room']?.toString() ?? '',
+              sPhoto,
+              item['image_url']?.toString(),
+            ));
+            changed = true;
+          }
+        }
+        if (changed) {
+          globalComplaints.sort((a, b) => b.date.compareTo(a.date));
+        }
+      }
+    } catch (_) {}
   }
 
   static Future<void> pushSingleNotice(NoticeItem n, {String? targetHostel}) async {
@@ -2064,13 +2189,15 @@ class SyncService {
       } else {
         await _dbRef.child('notices').child(safeId).set(data);
       }
+      // Dual-sync to Supabase for backward compatibility with v1.0.127
+      _syncNoticeToSupabase(n, targetHostel);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push notices error: $e");
     }
   }
 
-  /// Push only single complaint to Firebase
+  /// Push only single complaint to Firebase and dual-sync to Supabase
   static Future<void> pushSingleComplaint(ComplaintItem c) async {
     try {
       final safeId = c.id.replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
@@ -2085,6 +2212,8 @@ class SyncService {
         'student_photo': c.studentPhotoUrl ?? '',
         'image_url': photoUrl,
       });
+      // Dual-sync to Supabase for backward compatibility with v1.0.127
+      _syncComplaintToSupabase(c);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push complaint error: $e");
@@ -6047,6 +6176,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      AppUpdateService.checkForUpdate(context);
       await SyncService.fetchNow();
       _verifyStudentStillExists();
       DateTime now = realTime;
@@ -7667,6 +7797,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      AppUpdateService.checkForUpdate(context);
       await SyncService.fetchNow();
       _verifyAdminStillExists();
       DateTime now = realTime;
