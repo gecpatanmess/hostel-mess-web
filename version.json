@@ -1,1 +1,10 @@
-{"app_name":"hostelmessmanagment","version":"1.0.127","build_number":"127","package_name":"hostelmessmanagment"}
+{
+  "app_name": "hostelmessmanagment",
+  "version": "2.0.1",
+  "build_number": "128",
+  "package_name": "hostelmessmanagment",
+  "apk_url": "https://github.com/gecpatanmess/hostel-mess-web/releases/download/v2.0.1/app-release.apk",
+  "ios_url": "",
+  "is_mandatory": false,
+  "changelog": "Major update v2.0.1: Super-fast in-app updates, direct Firebase notices & complaints, and overall performance improvements."
+}

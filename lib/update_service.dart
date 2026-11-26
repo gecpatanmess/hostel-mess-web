@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -5,12 +6,13 @@ import 'package:dio/dio.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'main.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AppUpdateService {
-  static final _supabase = Supabase.instance.client;
+  static const String GITHUB_RAW_URL =
+      "https://raw.githubusercontent.com/gecpatanmess/hostel-mess-web/master/version.json";
+  static const String GITHUB_RELEASES_API_URL =
+      "https://api.github.com/repos/gecpatanmess/hostel-mess-web/releases/latest";
 
   static Future<void> checkForUpdate(BuildContext context) async {
     try {
@@ -21,19 +23,63 @@ class AppUpdateService {
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
 
-      // Fetch latest version from Supabase
-      final response = await _supabase
-          .from('app_updates')
-          .select('version, apk_url, ios_url, is_mandatory')
-          .eq('id', 1)
-          .maybeSingle();
+      final dio = Dio();
+      dio.options.receiveTimeout = const Duration(seconds: 10);
+      dio.options.sendTimeout = const Duration(seconds: 10);
 
-      if (response == null) return;
+      String latestVersion = '';
+      String apkUrl = '';
+      String iosUrl = '';
+      bool isMandatory = false;
 
-      final latestVersion = (response['version'] ?? '1.0.0') as String;
-      final apkUrl = (response['apk_url'] ?? '') as String;
-      final iosUrl = (response['ios_url'] ?? apkUrl) as String;
-      final isMandatory = (response['is_mandatory'] ?? false) as bool;
+      // 1. Try GitHub Raw version.json (fastest, CDN cached, zero rate limits)
+      try {
+        final response = await dio.get(GITHUB_RAW_URL);
+        if (response.data != null) {
+          Map data;
+          if (response.data is Map) {
+            data = response.data;
+          } else if (response.data is String) {
+            data = jsonDecode(response.data);
+          } else {
+            data = {};
+          }
+          latestVersion = (data['version'] ?? '').toString();
+          apkUrl = (data['apk_url'] ?? '').toString();
+          iosUrl = (data['ios_url'] ?? '').toString();
+          isMandatory = data['is_mandatory'] == true;
+        }
+      } catch (e) {
+        debugPrint("GitHub Raw version fetch failed: $e, falling back to Releases API");
+      }
+
+      // 2. Fallback to GitHub Releases API if needed
+      if (latestVersion.isEmpty || apkUrl.isEmpty) {
+        try {
+          final response = await dio.get(
+            GITHUB_RELEASES_API_URL,
+            options: Options(headers: {'Accept': 'application/vnd.github.v3+json'}),
+          );
+          if (response.data != null && response.data is Map) {
+            latestVersion = (response.data['tag_name'] ?? '')
+                .toString()
+                .replaceAll('v', '')
+                .trim();
+            final assets = response.data['assets'] as List? ?? [];
+            for (var a in assets) {
+              final name = (a['name'] ?? '').toString().toLowerCase();
+              if (name.endsWith('.apk')) {
+                apkUrl = (a['browser_download_url'] ?? '').toString();
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint("GitHub Releases API fetch error: $e");
+        }
+      }
+
+      if (latestVersion.isEmpty || apkUrl.isEmpty) return;
 
       // Compare versions
       if (_isUpdateAvailable(currentVersion, latestVersion)) {

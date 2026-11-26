@@ -61,11 +61,15 @@ class ExportService {
 
       if (finalBytes != null) {
         if (kIsWeb) {
-            final xFile = XFile.fromData(finalBytes, name: '\.');
-            await Share.shareXFiles([xFile], text: 'Here is the report: ');
+            final xFile = XFile.fromData(
+              finalBytes,
+              name: '$safeTitle.$extension',
+              mimeType: extension == 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'application/pdf',
+            );
+            await Share.shareXFiles([xFile], text: 'Here is the report: $title');
         } else {
             final directory = await getApplicationDocumentsDirectory();
-            final String filePath = '\/\.';
+            final String filePath = '${directory.path}/$safeTitle.$extension';
             final savedFile = File(filePath);
             await savedFile.writeAsBytes(finalBytes);
             
@@ -73,14 +77,14 @@ class ExportService {
             final rect = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
             await Share.shareXFiles(
               [XFile(savedFile.path)], 
-              text: 'Here is the report: ',
+              text: 'Here is the report: $title',
               sharePositionOrigin: rect,
             );
         }
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: ')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e')));
       }
     }
   }

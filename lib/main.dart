@@ -12,7 +12,6 @@ import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:path_provider/path_provider.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'export_service.dart';
 import 'splash_screen.dart';
@@ -29,6 +28,8 @@ import 'package:printing/printing.dart';
 const String RENDER_API_URL = "https://hostel-backend-pdph.onrender.com";
 Map<String, DailyRecord> globalApiAttendanceMap = {};
 Set<String> _fetchedApiMonths = {};
+String? globalStudentSuffix;
+
 Future<void> fetchAttendanceMonth(int year, int month) async {
   String monthKey = "${globalHostelMode}_$year-$month";
   if (_fetchedApiMonths.contains(monthKey)) return;
@@ -46,6 +47,10 @@ Future<void> fetchAttendanceMonth(int year, int month) async {
           DateTime itemDate = DateTime.parse(item['attendance_date']).toLocal();
           String key =
               "${itemDate.year}-${itemDate.month}-${itemDate.day}_${item['room_no']}_${item['student_name']}";
+          // POINT 1 FIX: If student logged in, only store this student's records to save memory/data
+          if (globalStudentSuffix != null && !key.endsWith(globalStudentSuffix!)) {
+            continue;
+          }
           DailyRecord rec = DailyRecord();
           rec.l = item['lunch_status'] ?? '';
           rec.d = item['dinner_status'] ?? '';
@@ -711,6 +716,51 @@ class ComplaintItem {
     this.studentPhotoUrl, [
     this.complaintImageUrl,
   ]);
+}
+
+Widget buildComplaintImageWidget(String imgData, {double height = 150}) {
+  if (imgData.startsWith('data:image') || !imgData.startsWith('http')) {
+    try {
+      String clean = imgData.contains(',') ? imgData.split(',').last : imgData;
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          base64Decode(clean),
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => const Icon(
+            Icons.broken_image,
+            color: brandGray,
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(8),
+    child: Image.network(
+      imgData,
+      height: height,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const Icon(
+        Icons.broken_image,
+        color: brandGray,
+      ),
+    ),
+  );
+}
+
+ImageProvider? getSafeImageProvider(String? urlOrBase64) {
+  if (urlOrBase64 == null || urlOrBase64.isEmpty) return null;
+  if (urlOrBase64.startsWith('data:image') || !urlOrBase64.startsWith('http')) {
+    try {
+      String clean = urlOrBase64.contains(',') ? urlOrBase64.split(',').last : urlOrBase64;
+      return MemoryImage(base64Decode(clean));
+    } catch (_) {
+      return null;
+    }
+  }
+  return NetworkImage(urlOrBase64);
 }
 
 class ComplaintWindowConfig {
@@ -1452,15 +1502,6 @@ void main() async {
     });
     // Initialize Notification Service
     await NotificationService.init();
-    try {
-      await Supabase.initialize(
-        url: 'https://whliroffubcqsalxdqfs.supabase.co',
-        anonKey: 'sb_publishable_dWnrma0eBAfoHidi0zvTdQ_arcCmFEe',
-      );
-      print('Supabase Initialized');
-    } catch (e) {
-      print('Supabase Init Error: $e');
-    }
     await _loadDataFromPrefs();
     SyncService.listen();
   } catch (e) {
@@ -1551,6 +1592,7 @@ Future<void> _loadDataFromPrefs() async {
   }
   if (savedHostelMode != null) globalHostelMode = savedHostelMode;
   if (userType == 'admin') {
+    globalStudentSuffix = null;
     String? phone = prefs.getString('identifier');
     String? photoUrl = prefs.getString('photoPath');
     String? name = prefs.getString('extraInfo');
@@ -1571,6 +1613,7 @@ Future<void> _loadDataFromPrefs() async {
     String? photoUrl = prefs.getString('photoPath');
     String? room = prefs.getString('extraInfo');
     if (name != null && room != null) {
+      globalStudentSuffix = "_${room}_$name";
       bool existsInCache = globalRegisteredStudents.any(
         (s) => s.name == name && s.roomNo == room,
       );
@@ -1607,26 +1650,6 @@ int calculatePayableBill(int presentMealsCount) {
 }
 
 class SyncService {
-  static Future<void> deleteStorageImage(String? url) async {
-    if (url == null || url.isEmpty || !url.contains('mess_images')) return;
-    try {
-      String filename = url.split('/').last;
-      await _supabase.storage.from('mess_images').remove([filename]);
-    } catch (e) {}
-  }
-
-  static Future<String?> uploadImage(Uint8List bytes) async {
-    try {
-      final path = '${realTime.millisecondsSinceEpoch}.jpg';
-      await _supabase.storage.from('mess_images').uploadBinary(path, bytes);
-      return _supabase.storage.from('mess_images').getPublicUrl(path);
-    } catch (e) {
-      print("Image upload error: $e");
-      return null;
-    }
-  }
-
-  static final _supabase = Supabase.instance.client;
   static DatabaseReference get _dbRef =>
       FirebaseDatabase.instance.ref('hostelData_$globalHostelMode');
   static bool _isSyncingIn = false;
@@ -1639,14 +1662,8 @@ class SyncService {
   static void setSwitchCooldown(bool val) => _switchCooldown = val;
   static bool _pollCooldown = false;
   static StreamSubscription? _firebaseSub;
-  static StreamSubscription? _supaNoticesSub;
-  static StreamSubscription? _supaComplaintsSub;
-  static StreamSubscription? _supaMenuSub;
   static void cancelAllStreams() {
     _firebaseSub?.cancel();
-    _supaMenuSub?.cancel();
-    _supaNoticesSub?.cancel();
-    _supaComplaintsSub?.cancel();
   }
   static Future<void> switchMode(String mode) async {
     globalHostelMode = mode;
@@ -1670,10 +1687,6 @@ class SyncService {
     _switchCooldown = false;
     globalComplaintWindowConfig = ComplaintWindowConfig(isOpen: true, maxPerMonth: 2);
     await _firebaseSub?.cancel();
-    await _supaMenuSub?.cancel();
-    await _supaNoticesSub?.cancel();
-    await _supaComplaintsSub?.cancel();
-    _supabaseStreamsInitialized = false;
     listen();
     globalSyncTrigger.value++; // Force UI refresh immediately on toggle
     await fetchNow();
@@ -1834,15 +1847,12 @@ class SyncService {
     }
   }
 
-  /// Push only notices to Firebase
+  /// Delete notice from Firebase
   static Future<void> deleteNotice(String id) async {
     try {
       globalNotices.removeWhere((n) => n.id == id);
       globalSyncTrigger.value++;
-      await _supabase.from('notices_$globalHostelMode').delete().eq('id', id);
-      await _dbRef
-          .child('notices_trigger')
-          .set(realTime.millisecondsSinceEpoch);
+      await _dbRef.child('notices').child(id).remove();
     } catch (e) {
       print("Delete notice error: $e");
     }
@@ -1850,19 +1860,14 @@ class SyncService {
 
   static Future<void> deleteComplaint(String id) async {
     try {
-      // Find the complaint to get its image URL
       var compIdx = globalComplaints.indexWhere((c) => c.id == id);
       if (compIdx != -1) {
-        var comp = globalComplaints[compIdx];
-        if (comp.complaintImageUrl != null && comp.complaintImageUrl!.isNotEmpty) {
-          await deleteStorageImage(comp.complaintImageUrl);
-        }
         globalComplaints.removeAt(compIdx);
       }
       globalAdminHiddenComplaints.add(id); // Keep local hide for UI immediate effect
       await saveAdminHiddenComplaints();
-      await _supabase.from('complaints_$globalHostelMode').delete().eq('id', id);
       globalSyncTrigger.value++;
+      await _dbRef.child('complaints').child(id).remove();
     } catch (e) {
       print("Delete complaint error: $e");
     }
@@ -1875,17 +1880,22 @@ class SyncService {
       if (snap.exists && snap.value != null) {
         Map<dynamic, dynamic> rawData = snap.value as Map<dynamic, dynamic>;
         try {
-          final menuData = await _supabase
-              .from('menu_$globalHostelMode')
-              .select()
-              .eq('id', 1);
-          if (menuData.isNotEmpty) {
-            globalMenuUrl = menuData.first['image_url'];
-            globalMenuIsPdf = (globalMenuUrl ?? '').toLowerCase().contains(
-              '.pdf',
-            );
-          } else {
-            globalMenuUrl = null;
+          if (rawData['menu'] != null) {
+            globalMenuIsPdf = rawData['menu']['isPdf'] ?? false;
+            String menuBase64 = rawData['menu']['fileBase64'] ?? '';
+            if (menuBase64.isNotEmpty && !kIsWeb) {
+              final dir = await getApplicationDocumentsDirectory();
+              String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
+              File mFile = File(
+                '${dir.path}/mess_menu_${realTime.millisecondsSinceEpoch}.$ext',
+              );
+              await mFile.writeAsBytes(base64Decode(menuBase64));
+              globalMenuFile = mFile;
+            } else if (menuBase64.isNotEmpty && kIsWeb) {
+              globalMenuUploadBytes = base64Decode(menuBase64);
+            } else {
+              globalMenuFile = null;
+            }
           }
         } catch (e) {}
         Map<String, dynamic> data = jsonDecode(jsonEncode(rawData));
@@ -1932,15 +1942,21 @@ class SyncService {
           globalAttendanceMap.clear();
           if (data['attendance'] != null) {
             (data['attendance'] as Map).forEach((k, v) {
+              String kStr = k.toString();
+              if (globalStudentSuffix != null &&
+                  !kStr.endsWith(globalStudentSuffix!) &&
+                  !attendanceSafeKey(kStr).endsWith(attendanceSafeKey(globalStudentSuffix!))) {
+                return;
+              }
               var rec = DailyRecord();
               rec.l = v['l'] ?? '';
               rec.d = v['d'] ?? '';
               rec.lTime = v['lt'] ?? '';
               rec.dTime = v['dt'] ?? '';
-              String safeK = attendanceSafeKey(k.toString());
+              String safeK = attendanceSafeKey(kStr);
               globalAttendanceMap[safeK] = rec;
-              if (safeK != k.toString()) {
-                globalAttendanceMap[k.toString()] = rec;
+              if (safeK != kStr) {
+                globalAttendanceMap[kStr] = rec;
               }
             });
           }
@@ -1969,48 +1985,56 @@ class SyncService {
             Map<dynamic, dynamic>.from(data['complaint_window']),
           );
         }
+        if (data['notices'] != null) {
+          globalNotices.clear();
+          (data['notices'] as Map).forEach((k, v) {
+            if (v != null) {
+              globalNotices.add(
+                NoticeItem(
+                  v['id']?.toString() ?? k.toString(),
+                  v['title']?.toString() ?? '',
+                  v['message']?.toString() ?? '',
+                  DateTime.tryParse(v['date']?.toString() ?? '') ?? realTime,
+                ),
+              );
+            }
+          });
+          globalNotices.sort((a, b) => b.date.compareTo(a.date));
+        }
+        if (data['complaints'] != null) {
+          globalComplaints.clear();
+          (data['complaints'] as Map).forEach((k, v) {
+            if (v != null) {
+              String? sPhoto = v['student_photo']?.toString();
+              if (sPhoto == null || sPhoto.isEmpty) {
+                try {
+                  sPhoto = globalRegisteredStudents
+                      .firstWhere(
+                        (s) =>
+                            s.roomNo == v['student_room'] &&
+                            s.name == v['student_name'],
+                      )
+                      .photoUrl;
+                } catch (e) {}
+              }
+              globalComplaints.add(
+                ComplaintItem(
+                  v['id']?.toString() ?? k.toString(),
+                  v['title']?.toString() ?? '',
+                  v['description']?.toString() ?? '',
+                  DateTime.tryParse(v['date']?.toString() ?? '') ?? realTime,
+                  v['student_name']?.toString() ?? '',
+                  v['student_room']?.toString() ?? '',
+                  sPhoto,
+                  v['image_url']?.toString(),
+                ),
+              );
+            }
+          });
+          globalComplaints.sort((a, b) => b.date.compareTo(a.date));
+        }
         await saveRegisteredStudents();
         _hasDownloadedOnce = true;
-      } // 2. Fetch from Supabase
-      final noticesData = await _supabase
-          .from('notices_$globalHostelMode').select().order('date', ascending: false).limit(50);
-      globalNotices.clear();
-      for (var n in noticesData) {
-        globalNotices.add(
-          NoticeItem(
-            n['id'].toString(),
-            n['title'],
-            n['message'],
-            DateTime.parse(n['date']),
-          ),
-        );
-      }
-      final complaintsData = await _supabase
-          .from('complaints_$globalHostelMode').select().order('date', ascending: false).limit(50);
-      globalComplaints.clear();
-      for (var c in complaintsData) {
-        String? sPhoto = null;
-        try {
-          sPhoto = globalRegisteredStudents
-              .firstWhere(
-                (s) =>
-                    s.roomNo == c['student_room'] &&
-                    s.name == c['student_name'],
-              )
-              .photoUrl;
-        } catch (e) {}
-        globalComplaints.add(
-          ComplaintItem(
-            c['id'].toString(),
-            c['title'],
-            c['description'],
-            DateTime.parse(c['date']),
-            c['student_name'],
-            c['student_room'],
-            sPhoto,
-            c['image_url'],
-          ),
-        );
       }
       globalSyncTrigger.value++;
     } catch (e) {
@@ -2020,15 +2044,12 @@ class SyncService {
 
   static Future<void> pushSingleNotice(NoticeItem n) async {
     try {
-      await _supabase.from('notices_$globalHostelMode').upsert({
+      await _dbRef.child('notices').child(n.id).set({
         'id': n.id,
         'title': n.title,
         'message': n.message,
         'date': n.date.toIso8601String(),
       });
-      await _dbRef
-          .child('notices_trigger')
-          .set(realTime.millisecondsSinceEpoch);
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push notices error: $e");
@@ -2039,13 +2060,14 @@ class SyncService {
   static Future<void> pushSingleComplaint(ComplaintItem c) async {
     try {
       String photoUrl = c.complaintImageUrl ?? "";
-      await _supabase.from('complaints_$globalHostelMode').upsert({
+      await _dbRef.child('complaints').child(c.id).set({
         'id': c.id,
         'title': c.title,
         'description': c.description,
         'date': c.date.toIso8601String(),
         'student_name': c.studentName,
         'student_room': c.studentRoom,
+        'student_photo': c.studentPhotoUrl ?? '',
         'image_url': photoUrl,
       });
       globalSyncTrigger.value++;
@@ -2198,7 +2220,6 @@ class SyncService {
     if (globalMenuFile == null && globalMenuUploadBytes == null) {
       try {
         await _dbRef.child('menu').remove();
-        await _supabase.from('menu_$globalHostelMode').delete().eq('id', 1);
         globalSyncTrigger.value++;
       } catch (e) {}
       return;
@@ -2206,20 +2227,16 @@ class SyncService {
     try {
       final bytes =
           globalMenuUploadBytes ?? await globalMenuFile!.readAsBytes();
-      String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
-      final path =
-          'menu_${globalHostelMode}_${realTime.millisecondsSinceEpoch}.$ext';
-      await _supabase.storage.from('mess_images').uploadBinary(path, bytes);
-      final url = _supabase.storage.from('mess_images').getPublicUrl(path);
-      await _supabase.from('menu_$globalHostelMode').upsert({
-        'id': 1,
-        'image_url': url,
+      final fileBase64 = base64Encode(bytes);
+      await _dbRef.child('menu').set({
+        'isPdf': globalMenuIsPdf,
+        'fileBase64': fileBase64,
         'updated_at': realTime.toIso8601String(),
-      }); // Clear legacy firebase node so it doesn't conflict
-      await _dbRef.child('menu').remove();
+      });
+      globalSyncTrigger.value++;
     } catch (e) {
       print("Push menu error: $e");
-      throw Exception("Supabase Upload Error: $e");
+      throw Exception("Menu Upload Error: $e");
     }
   }
 
@@ -2298,7 +2315,7 @@ class SyncService {
     List<Map<String, dynamic>> adminsList = [];
     for (var a in globalAdmins) adminsList.add(a.toJson());
     data['admins'] =
-        adminsList; // NOTE: dynamic_polls are NOT pushed here on purpose. // They are written only via targeted updates (createDynamicPoll / voteDynamicPoll / // removeVoteDynamicPoll / stopDynamicPoll) so concurrent votes never overwrite each other. // NOTICES, COMPLAINTS AND MENU ARE NOW IN SUPABASE ONLY. // We no longer push them to Firebase.
+        adminsList; // NOTE: dynamic_polls, notices, complaints, and menu are pushed via targeted updates.
     data['switches'] = {
       'globalEntryL': globalEntryL,
       'globalEntryD': globalEntryD,
@@ -2329,91 +2346,7 @@ class SyncService {
     }
   }
 
-  static bool _supabaseStreamsInitialized = false;
-  static void initSupabaseStreams() {
-    if (_supabaseStreamsInitialized) return;
-    _supabaseStreamsInitialized = true;
-    _supaMenuSub = _supabase
-        .from('menu_$globalHostelMode')
-        .stream(primaryKey: ['id'])
-        .listen((data) async {
-          if (data.isNotEmpty) {
-            String imgUrl = data.first['image_url'] ?? '';
-            globalMenuUrl = imgUrl;
-            globalMenuIsPdf = imgUrl.toLowerCase().contains('.pdf');
-            if (imgUrl.isNotEmpty) {
-              try {
-                final response = await _supabase.storage
-                    .from('mess_images')
-                    .download(imgUrl.split('/').last);
-                if (!kIsWeb) {
-                  final dir = await getApplicationDocumentsDirectory();
-                  File mFile = File('${dir.path}/mess_menu_supabase.jpg');
-                  await mFile.writeAsBytes(response);
-                  globalMenuFile = mFile;
-                } else {
-                  globalMenuUploadBytes = response;
-                }
-              } catch (e) {}
-            } else {
-              globalMenuFile = null;
-            }
-          } else {
-            globalMenuUrl = null;
-            globalMenuFile = null;
-          }
-          globalSyncTrigger.value++;
-        });
-    _supaNoticesSub = _supabase
-        .from('notices_$globalHostelMode').stream(primaryKey: ['id']).order('date', ascending: false).limit(50)
-        .listen((data) {
-          globalNotices.clear();
-          for (var n in data) {
-            globalNotices.add(
-              NoticeItem(
-                n['id'].toString(),
-                n['title'],
-                n['message'],
-                DateTime.parse(n['date']),
-              ),
-            );
-          }
-          globalSyncTrigger.value++;
-        });
-    _supaComplaintsSub = _supabase
-        .from('complaints_$globalHostelMode').stream(primaryKey: ['id']).order('date', ascending: false).limit(50)
-        .listen((data) async {
-          globalComplaints.clear();
-          for (var c in data) {
-            String? sPhoto = null;
-            try {
-              sPhoto = globalRegisteredStudents
-                  .firstWhere(
-                    (s) =>
-                        s.roomNo == c['student_room'] &&
-                        s.name == c['student_name'],
-                  )
-                  .photoUrl;
-            } catch (e) {}
-            globalComplaints.add(
-              ComplaintItem(
-                c['id'].toString(),
-                c['title'],
-                c['description'],
-                DateTime.parse(c['date']),
-                c['student_name'],
-                c['student_room'],
-                sPhoto,
-                c['image_url'],
-              ),
-            );
-          }
-          globalSyncTrigger.value++;
-        });
-  }
-
   static void listen() {
-    initSupabaseStreams();
     _firebaseSub?.cancel();
     _firebaseSub = _dbRef.onValue.listen((event) async {
       final snap = event.snapshot;
@@ -2465,15 +2398,21 @@ class SyncService {
           globalAttendanceMap.clear();
           if (data['attendance'] != null) {
             (data['attendance'] as Map).forEach((k, v) {
+              String kStr = k.toString();
+              if (globalStudentSuffix != null &&
+                  !kStr.endsWith(globalStudentSuffix!) &&
+                  !attendanceSafeKey(kStr).endsWith(attendanceSafeKey(globalStudentSuffix!))) {
+                return;
+              }
               var rec = DailyRecord();
               rec.l = v['l'] ?? '';
               rec.d = v['d'] ?? '';
               rec.lTime = v['lt'] ?? '';
               rec.dTime = v['dt'] ?? '';
-              String safeK = attendanceSafeKey(k.toString());
+              String safeK = attendanceSafeKey(kStr);
               globalAttendanceMap[safeK] = rec;
-              if (safeK != k.toString()) {
-                globalAttendanceMap[k.toString()] = rec;
+              if (safeK != kStr) {
+                globalAttendanceMap[kStr] = rec;
               }
             });
           }
@@ -2531,6 +2470,54 @@ class SyncService {
           globalComplaintWindowConfig = ComplaintWindowConfig.fromJson(
             Map<dynamic, dynamic>.from(data['complaint_window']),
           );
+        }
+        if (data['notices'] != null) {
+          globalNotices.clear();
+          (data['notices'] as Map).forEach((k, v) {
+            if (v != null) {
+              globalNotices.add(
+                NoticeItem(
+                  v['id']?.toString() ?? k.toString(),
+                  v['title']?.toString() ?? '',
+                  v['message']?.toString() ?? '',
+                  DateTime.tryParse(v['date']?.toString() ?? '') ?? realTime,
+                ),
+              );
+            }
+          });
+          globalNotices.sort((a, b) => b.date.compareTo(a.date));
+        }
+        if (data['complaints'] != null) {
+          globalComplaints.clear();
+          (data['complaints'] as Map).forEach((k, v) {
+            if (v != null) {
+              String? sPhoto = v['student_photo']?.toString();
+              if (sPhoto == null || sPhoto.isEmpty) {
+                try {
+                  sPhoto = globalRegisteredStudents
+                      .firstWhere(
+                        (s) =>
+                            s.roomNo == v['student_room'] &&
+                            s.name == v['student_name'],
+                      )
+                      .photoUrl;
+                } catch (e) {}
+              }
+              globalComplaints.add(
+                ComplaintItem(
+                  v['id']?.toString() ?? k.toString(),
+                  v['title']?.toString() ?? '',
+                  v['description']?.toString() ?? '',
+                  DateTime.tryParse(v['date']?.toString() ?? '') ?? realTime,
+                  v['student_name']?.toString() ?? '',
+                  v['student_room']?.toString() ?? '',
+                  sPhoto,
+                  v['image_url']?.toString(),
+                ),
+              );
+            }
+          });
+          globalComplaints.sort((a, b) => b.date.compareTo(a.date));
         }
         await saveRegisteredStudents();
         final prefs = await SharedPreferences.getInstance();
@@ -3185,39 +3172,18 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       );
       if (croppedFile == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Uploading photo... Please wait.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
       final bytes = await croppedFile.readAsBytes();
-      final url = await SyncService.uploadImage(bytes);
-      if (url != null) {
-        if (isStudentForm && studentPhotoUrl != null) {
-          await SyncService.deleteStorageImage(studentPhotoUrl);
-        } else if (!isStudentForm && adminPhotoUrl != null) {
-          await SyncService.deleteStorageImage(adminPhotoUrl);
+      final base64Photo = "data:image/jpeg;base64,${base64Encode(bytes)}";
+      setState(() {
+        if (isStudentForm) {
+          studentPhotoUrl = base64Photo;
+        } else {
+          adminPhotoUrl = base64Photo;
         }
-        setState(() {
-          if (isStudentForm) {
-            studentPhotoUrl = url;
-          } else {
-            adminPhotoUrl = url;
-          }
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Upload successful!')));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Upload failed (Storage Error). Check bucket policies.',
-            ),
-          ),
-        );
-      }
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Photo attached!')));
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -3964,6 +3930,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('identifier', typedName);
     await prefs.setString('photoPath', studentPhotoUrl ?? '');
     await prefs.setString('extraInfo', selectedRoom!);
+    globalStudentSuffix = "_${selectedRoom!}_${typedName}";
     await NotificationService.saveToken();
     Navigator.pushReplacement(
       context,
@@ -4025,6 +3992,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString('last_admin_photo', adminPhotoUrl ?? '');
           await prefs.setString('last_admin_scope', admin.hostelScope);
           cachedAdminScope = admin.hostelScope;
+          globalStudentSuffix = null;
           await prefs.setString('userType', 'admin');
           String targetMode = admin.hostelScope.trim().toLowerCase() == 'girls'
               ? 'girls'
@@ -4622,6 +4590,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'extraInfo',
       student.roomNo,
     ); // CRITICAL FIX: Restart streams for the correct hostel mode before navigating
+    globalStudentSuffix = "_${student.roomNo}_${student.name}";
     await SyncService.switchMode(globalHostelMode);
     await NotificationService.saveToken();
     Navigator.pushReplacement(
@@ -4643,6 +4612,7 @@ class _LoginScreenState extends State<LoginScreen> {
     await prefs.setString('last_admin_photo', admin.photoUrl ?? '');
     await prefs.setString('last_admin_scope', admin.hostelScope);
     cachedAdminScope = admin.hostelScope;
+    globalStudentSuffix = null;
     await prefs.setString('userType', 'admin');
     String targetMode = admin.hostelScope.trim().toLowerCase() == 'girls'
         ? 'girls'
@@ -4956,9 +4926,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                 shape: BoxShape.circle,
                                 image:
                                     (studentPhotoUrl != null &&
-                                        studentPhotoUrl!.isNotEmpty)
+                                        studentPhotoUrl!.isNotEmpty &&
+                                        getSafeImageProvider(studentPhotoUrl!) != null)
                                     ? DecorationImage(
-                                        image: NetworkImage(studentPhotoUrl!),
+                                        image: getSafeImageProvider(studentPhotoUrl!)!,
                                         fit: BoxFit.cover,
                                       )
                                     : null,
@@ -5017,9 +4988,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             String? photo = _isAdminFlow
                                 ? adminPhotoUrl
                                 : (studentPhotoUrl ?? savedStudentPhoto);
-                            return (photo != null && photo.isNotEmpty)
+                            final provider = getSafeImageProvider(photo);
+                            return (provider != null)
                                 ? DecorationImage(
-                                    image: NetworkImage(photo),
+                                    image: provider,
                                     fit: BoxFit.cover,
                                   )
                                 : null;
@@ -5433,9 +5405,10 @@ class _LoginScreenState extends State<LoginScreen> {
                             shape: BoxShape.circle,
                             image:
                                 (adminPhotoUrl != null &&
-                                    adminPhotoUrl!.isNotEmpty)
+                                    adminPhotoUrl!.isNotEmpty &&
+                                    getSafeImageProvider(adminPhotoUrl!) != null)
                                 ? DecorationImage(
-                                    image: NetworkImage(adminPhotoUrl!),
+                                    image: getSafeImageProvider(adminPhotoUrl!)!,
                                     fit: BoxFit.cover,
                                   )
                                 : null,
@@ -6035,6 +6008,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    globalStudentSuffix = "_${widget.roomNo}_${widget.name}";
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
     _initDirectStudentListener();
     _startEvictionHeartbeat();
@@ -6152,6 +6126,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     _studentsStreamSub?.cancel();
     _evictionPollTimer?.cancel();
     SyncService.cancelAllStreams();
+    globalStudentSuffix = null;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userType');
@@ -7271,7 +7246,9 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   }
 
   void _onLogout() async {
+    globalStudentSuffix = null;
     SyncService.cancelAllStreams();
+    globalStudentSuffix = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userType');
     await prefs.remove('identifier');
@@ -7305,7 +7282,42 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 tooltip: 'Refresh',
                 onPressed: () async {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text("Refreshing all data..."),
+                        ],
+                      ),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                  DateTime now = realTime;
+                  String monthKey = "${globalHostelMode}_${now.year}-${now.month}";
+                  _fetchedApiMonths.remove(monthKey);
+                  await fetchAttendanceMonth(now.year, now.month);
                   await SyncService.fetchNow();
+                  if (mounted) {
+                    setState(() {});
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("App refreshed successfully! 🔄"),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 },
               ),
             ],
@@ -7651,6 +7663,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   @override
   void initState() {
     super.initState();
+    globalStudentSuffix = null;
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
     _initDirectAdminListener();
     _initRolesListener();
@@ -7820,6 +7833,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _adminsStreamSub?.cancel();
     _adminEvictionPollTimer?.cancel();
     SyncService.cancelAllStreams();
+    globalStudentSuffix = null;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userType');
@@ -8946,8 +8960,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       }
     }
 
+    final int lunchTenderAmount = lunchPresent * globalTenderPrice;
+    final int dinnerTenderAmount = dinnerPresent * globalTenderPrice;
     final int totalMealsToday = lunchPresent + dinnerPresent;
-    final int totalTenderAmount = totalMealsToday * globalTenderPrice;
+    final int totalTenderAmount = lunchTenderAmount + dinnerTenderAmount;
 
     return Card(
       color: Colors.white,
@@ -9258,18 +9274,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "🥪 Lunch: $lunchPresent",
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                          "🥪 Lunch: $lunchPresent (₹$lunchTenderAmount)",
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
                         ),
                         Container(width: 1, height: 12, color: Colors.white24),
                         Text(
-                          "🍛 Dinner: $dinnerPresent",
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                          "🍛 Dinner: $dinnerPresent (₹$dinnerTenderAmount)",
+                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
                         ),
                         Container(width: 1, height: 12, color: Colors.white24),
                         Text(
-                          "👥 Students: $totalStudents",
-                          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600),
+                          "👥 Total: $totalMealsToday",
+                          style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -9338,6 +9354,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ],
                           ),
                         ],
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: brandGreen.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Lunch Total:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: brandDark)),
+                              Text("₹$lunchTenderAmount", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: brandGreen)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -9400,6 +9431,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             ],
                           ),
                         ],
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2563EB).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Dinner Total:", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: brandDark)),
+                              Text("₹$dinnerTenderAmount", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF2563EB))),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -9668,9 +9714,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       leading: CircleAvatar(
                         radius: 18,
                         backgroundColor: brandGreen.withValues(alpha: 0.12),
-                        backgroundImage: (s.photoUrl != null && s.photoUrl!.isNotEmpty)
-                            ? NetworkImage(s.photoUrl!)
-                            : null,
+                        backgroundImage: getSafeImageProvider(s.photoUrl),
                         child: (s.photoUrl == null || s.photoUrl!.isEmpty)
                             ? Text(
                                 s.name.isNotEmpty ? s.name[0].toUpperCase() : '?',
@@ -9907,7 +9951,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _onLogout() async {
+    globalStudentSuffix = null;
     SyncService.cancelAllStreams();
+    globalStudentSuffix = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userType');
     await prefs.remove('identifier');
@@ -11462,7 +11508,42 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 tooltip: 'Refresh',
                 onPressed: () async {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text("Refreshing all data..."),
+                        ],
+                      ),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                  DateTime now = realTime;
+                  String monthKey = "${globalHostelMode}_${now.year}-${now.month}";
+                  _fetchedApiMonths.remove(monthKey);
+                  await fetchAttendanceMonth(now.year, now.month);
                   await SyncService.fetchNow();
+                  if (mounted) {
+                    setState(() {});
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("App refreshed successfully! 🔄"),
+                        backgroundColor: Colors.green,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 },
               ),
             ],
@@ -12011,22 +12092,20 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                             : () async {
                                 final XFile? image = await _picker.pickImage(
                                   source: ImageSource.gallery,
-                                  imageQuality: 40,
-                                  maxWidth: 800,
+                                  imageQuality: 35,
+                                  maxWidth: 600,
+                                  maxHeight: 600,
                                 );
                                 if (image != null) {
                                   setStateSB(() {
                                     isUploading = true;
                                   });
                                   final bytes = await image.readAsBytes();
-                                  final url = await SyncService.uploadImage(
-                                    bytes,
-                                  );
+                                  final base64Str =
+                                      "data:image/jpeg;base64,${base64Encode(bytes)}";
                                   setStateSB(() {
                                     isUploading = false;
-                                    if (url != null) {
-                                      localComplaintImageUrl = url;
-                                    }
+                                    localComplaintImageUrl = base64Str;
                                   });
                                 }
                               },
@@ -12300,16 +12379,7 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                                   if (c.complaintImageUrl != null &&
                                       c.complaintImageUrl!.isNotEmpty) ...[
                                     const SizedBox(height: 8),
-                                    Image.network(
-                                      c.complaintImageUrl!,
-                                      height: 150,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) =>
-                                          const Icon(
-                                            Icons.broken_image,
-                                            color: brandGray,
-                                          ),
-                                    ),
+                                    buildComplaintImageWidget(c.complaintImageUrl!),
                                   ],
                                   const SizedBox(height: 8),
                                   Text(
@@ -12842,16 +12912,7 @@ class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
                                   if (c.complaintImageUrl != null &&
                                       c.complaintImageUrl!.isNotEmpty) ...[
                                     const SizedBox(height: 8),
-                                    Image.network(
-                                      c.complaintImageUrl!,
-                                      height: 150,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) =>
-                                          const Icon(
-                                            Icons.broken_image,
-                                            color: brandGray,
-                                          ),
-                                    ),
+                                    buildComplaintImageWidget(c.complaintImageUrl!),
                                   ],
                                   const SizedBox(height: 6),
                                   Text(
@@ -13704,17 +13765,17 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "Enter the 20-digit password to enable editing mode:",
+                      "Enter security password to enable editing mode:",
                       style: TextStyle(fontSize: 13, color: brandGray),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: passCtrl,
                       obscureText: isObscured,
-                      keyboardType: TextInputType.number,
-                      maxLength: 20,
+                      keyboardType: TextInputType.text,
+                      maxLength: 35,
                       decoration: InputDecoration(
-                        labelText: "20-Digit Password",
+                        labelText: "Security Password",
                         errorText: errorText,
                         filled: true,
                         fillColor: brandInputBg,
@@ -13782,6 +13843,172 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
               ],
             );
           },
+        );
+      },
+    );
+  }
+
+  Future<void> _showAttendanceChoiceDialog({
+    required BuildContext context,
+    required String studentName,
+    required String roomNo,
+    required String dateLabel,
+    required String mealType,
+    required String rawKey,
+    required VoidCallback onUpdated,
+  }) async {
+    String key = attendanceSafeKey(rawKey);
+    DailyRecord rec = getAttendanceMerged(key) ?? getAttendanceMerged(rawKey) ?? DailyRecord();
+    String currentStatus = mealType == 'L' ? rec.l.trim() : rec.d.trim();
+    if (currentStatus.isEmpty) currentStatus = '-';
+
+    String mealName = mealType == 'L' ? 'Lunch' : 'Dinner';
+
+    await showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: (mealType == 'L' ? brandGreen : const Color(0xFF2563EB)).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        mealType == 'L' ? Icons.lunch_dining : Icons.dinner_dining,
+                        color: mealType == 'L' ? brandGreen : const Color(0xFF2563EB),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            studentName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: brandDark,
+                            ),
+                          ),
+                          Text(
+                            "Room $roomNo • $dateLabel • $mealName",
+                            style: const TextStyle(fontSize: 12, color: brandGray),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: currentStatus == 'P'
+                            ? Colors.green.withValues(alpha: 0.1)
+                            : (currentStatus == 'A' ? Colors.redAccent.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        "Current: $currentStatus",
+                        style: TextStyle(
+                          color: currentStatus == 'P'
+                              ? Colors.green
+                              : (currentStatus == 'A' ? Colors.redAccent : brandGray),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFDCFCE7),
+                    child: Icon(Icons.check, color: Colors.green),
+                  ),
+                  title: const Text(
+                    "Mark as Present (P)",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                  ),
+                  subtitle: const Text("Student attended this meal"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (mealType == 'L') {
+                      rec.l = 'P';
+                      rec.lTime = formatTimeOfDay(realTime.hour, realTime.minute);
+                    } else {
+                      rec.d = 'P';
+                      rec.dTime = formatTimeOfDay(realTime.hour, realTime.minute);
+                    }
+                    globalAttendanceMap[key] = rec;
+                    await SyncService.pushAttendance(key, rec);
+                    onUpdated();
+                  },
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFFEE2E2),
+                    child: Icon(Icons.close, color: Colors.redAccent),
+                  ),
+                  title: const Text(
+                    "Mark as Absent (A)",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent),
+                  ),
+                  subtitle: const Text("Student did not attend this meal"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (mealType == 'L') {
+                      rec.l = 'A';
+                      rec.lTime = '';
+                    } else {
+                      rec.d = 'A';
+                      rec.dTime = '';
+                    }
+                    globalAttendanceMap[key] = rec;
+                    await SyncService.pushAttendance(key, rec);
+                    onUpdated();
+                  },
+                ),
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0xFFF3F4F6),
+                    child: Icon(Icons.remove, color: brandGray),
+                  ),
+                  title: const Text(
+                    "Clear / Unmark (-)",
+                    style: TextStyle(fontWeight: FontWeight.w600, color: brandDark),
+                  ),
+                  subtitle: const Text("Reset to empty slot"),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    if (mealType == 'L') {
+                      rec.l = '';
+                      rec.lTime = '';
+                    } else {
+                      rec.d = '';
+                      rec.dTime = '';
+                    }
+                    globalAttendanceMap[key] = rec;
+                    await SyncService.pushAttendance(key, rec);
+                    onUpdated();
+                  },
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -13897,15 +14124,8 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
       await dbRef.child('attendance').remove();
       await dbRef.child('paid').remove();
       await dbRef.child('polls').remove();
-      final supa = Supabase.instance.client;
-      await supa
-          .from('notices_$globalHostelMode')
-          .delete()
-          .not('id', 'is', null);
-      await supa
-          .from('complaints_$globalHostelMode')
-          .delete()
-          .not('id', 'is', null);
+      await dbRef.child('notices').remove();
+      await dbRef.child('complaints').remove();
       globalRegisteredStudents.clear();
       globalAttendanceMap.clear();
       globalMonthlyPaid.clear();
@@ -13997,8 +14217,8 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
         DailyRecord? rec = getAttendanceMerged(key);
         int total = 0;
         if (rec != null) {
-          if (rec.l == 'P') total += 70;
-          if (rec.d == 'P') total += 70;
+          if (rec.l == 'P') total += globalTenderPrice;
+          if (rec.d == 'P') total += globalTenderPrice;
         }
         rows.add({
           'room': room,
@@ -14025,6 +14245,11 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
 
   Widget _buildDailyView() {
     final rows = _generateDailyRows();
+    int dailyLunchCount = rows.where((r) => r['l'] == 'P').length;
+    int dailyDinnerCount = rows.where((r) => r['d'] == 'P').length;
+    int dailyLunchTotal = dailyLunchCount * globalTenderPrice;
+    int dailyDinnerTotal = dailyDinnerCount * globalTenderPrice;
+    int dailyGrandTotal = dailyLunchTotal + dailyDinnerTotal;
     String dateStr =
         "${_selectedDailyDate.day.toString().padLeft(2, '0')}/${_selectedDailyDate.month.toString().padLeft(2, '0')}/${_selectedDailyDate.year}";
     void export(String format) {
@@ -14114,6 +14339,32 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            border: Border(bottom: BorderSide(color: Colors.white12)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "🥪 Lunch: $dailyLunchCount (₹$dailyLunchTotal)",
+                style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+              Container(width: 1, height: 14, color: Colors.white24),
+              Text(
+                "🍛 Dinner: $dailyDinnerCount (₹$dailyDinnerTotal)",
+                style: const TextStyle(color: Color(0xFF60A5FA), fontWeight: FontWeight.bold, fontSize: 11),
+              ),
+              Container(width: 1, height: 14, color: Colors.white24),
+              Text(
+                "💰 Total: ₹$dailyGrandTotal",
+                style: const TextStyle(color: Color(0xFFFBBF24), fontWeight: FontWeight.bold, fontSize: 11),
               ),
             ],
           ),
@@ -14220,21 +14471,20 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                 ); // --- TEMPORARY EDITING BLOCK START ---
                 if (isEditingEnabled && !isEmpty) {
                   return InkWell(
-                    onTap: () async {
+                    onTap: () {
                       String rawKey =
                           "${_selectedDailyDate.year}-${_selectedDailyDate.month}-${_selectedDailyDate.day}_${room}_${name}";
-                      String key = attendanceSafeKey(rawKey);
-                      DailyRecord rec =
-                          globalAttendanceMap[key] ?? globalAttendanceMap[rawKey] ?? DailyRecord();
-                      setState(() {
-                        if (mealType == 'L') {
-                          rec.l = (rec.l == 'P') ? 'A' : 'P';
-                        } else {
-                          rec.d = (rec.d == 'P') ? 'A' : 'P';
-                        }
-                        globalAttendanceMap[key] = rec;
-                      });
-                      await SyncService.pushAttendance(key, rec);
+                      String dateLabel =
+                          "${_selectedDailyDate.day}/${_selectedDailyDate.month}/${_selectedDailyDate.year}";
+                      _showAttendanceChoiceDialog(
+                        context: context,
+                        studentName: name,
+                        roomNo: room,
+                        dateLabel: dateLabel,
+                        mealType: mealType,
+                        rawKey: rawKey,
+                        onUpdated: () => setState(() {}),
+                      );
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -14577,28 +14827,22 @@ class _AdminAttendanceScreenState extends State<AdminAttendanceScreen> {
                                 if (isEditingEnabled) {
                                   return InkWell(
                                     onTap: () {
-                                      setModalState(() async {
-                                        String rawKey =
-                                            "${_selectedMonth.year}-${_selectedMonth.month}-${h['day']}_${student.roomNo}_${student.name}";
-                                        String key = attendanceSafeKey(rawKey);
-                                        DailyRecord rec =
-                                            globalAttendanceMap[key] ??
-                                            globalAttendanceMap[rawKey] ??
-                                            DailyRecord();
-                                        if (mealType == 'L') {
-                                          rec.l = (rec.l == 'P') ? 'A' : 'P';
-                                        } else {
-                                          rec.d = (rec.d == 'P') ? 'A' : 'P';
-                                        }
-                                        globalAttendanceMap[key] = rec;
-                                        await SyncService.pushAttendance(
-                                          key,
-                                          rec,
-                                        );
-                                        setState(
-                                          () {},
-                                        ); // trigger rebuild on parent for instant UI update
-                                      });
+                                      String rawKey =
+                                          "${_selectedMonth.year}-${_selectedMonth.month}-${h['day']}_${student.roomNo}_${student.name}";
+                                      String dateLabel =
+                                          "${h['day']}/${_selectedMonth.month}/${_selectedMonth.year}";
+                                      _showAttendanceChoiceDialog(
+                                        context: context,
+                                        studentName: student.name,
+                                        roomNo: student.roomNo,
+                                        dateLabel: dateLabel,
+                                        mealType: mealType,
+                                        rawKey: rawKey,
+                                        onUpdated: () {
+                                          setModalState(() {});
+                                          setState(() {});
+                                        },
+                                      );
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
