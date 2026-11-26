@@ -1,10 +1,10 @@
 {
   "app_name": "hostelmessmanagment",
-  "version": "2.0.1",
-  "build_number": "128",
+  "version": "2.0.2",
+  "build_number": "129",
   "package_name": "hostelmessmanagment",
-  "apk_url": "https://github.com/gecpatanmess/hostel-mess-web/releases/download/v2.0.1/app-release.apk",
+  "apk_url": "https://github.com/gecpatanmess/hostel-mess-web/releases/download/v2.0.2/app-release.apk",
   "ios_url": "",
   "is_mandatory": false,
-  "changelog": "Major update v2.0.1: Super-fast in-app updates, direct Firebase notices & complaints, and overall performance improvements."
+  "changelog": "v2.0.2: Instant auto-close timing fix for mess entry, direct notice & complaint synchronization across Boys & Girls hostel sections."
 }

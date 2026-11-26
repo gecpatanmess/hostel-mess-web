@@ -1850,9 +1850,10 @@ class SyncService {
   /// Delete notice from Firebase
   static Future<void> deleteNotice(String id) async {
     try {
-      globalNotices.removeWhere((n) => n.id == id);
+      final safeId = id.replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
+      globalNotices.removeWhere((n) => n.id == id || n.id == safeId);
       globalSyncTrigger.value++;
-      await _dbRef.child('notices').child(id).remove();
+      await _dbRef.child('notices').child(safeId).remove();
     } catch (e) {
       print("Delete notice error: $e");
     }
@@ -1860,14 +1861,16 @@ class SyncService {
 
   static Future<void> deleteComplaint(String id) async {
     try {
-      var compIdx = globalComplaints.indexWhere((c) => c.id == id);
+      final safeId = id.replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
+      var compIdx = globalComplaints.indexWhere((c) => c.id == id || c.id == safeId);
       if (compIdx != -1) {
         globalComplaints.removeAt(compIdx);
       }
-      globalAdminHiddenComplaints.add(id); // Keep local hide for UI immediate effect
+      globalAdminHiddenComplaints.add(id);
+      globalAdminHiddenComplaints.add(safeId);
       await saveAdminHiddenComplaints();
       globalSyncTrigger.value++;
-      await _dbRef.child('complaints').child(id).remove();
+      await _dbRef.child('complaints').child(safeId).remove();
     } catch (e) {
       print("Delete complaint error: $e");
     }
@@ -2042,14 +2045,25 @@ class SyncService {
     }
   }
 
-  static Future<void> pushSingleNotice(NoticeItem n) async {
+  static Future<void> pushSingleNotice(NoticeItem n, {String? targetHostel}) async {
     try {
-      await _dbRef.child('notices').child(n.id).set({
-        'id': n.id,
+      final safeId = n.id.replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
+      final data = {
+        'id': safeId,
         'title': n.title,
         'message': n.message,
         'date': n.date.toIso8601String(),
-      });
+      };
+      if (targetHostel == 'both') {
+        await FirebaseDatabase.instance.ref('hostelData_boys/notices').child(safeId).set(data);
+        await FirebaseDatabase.instance.ref('hostelData_girls/notices').child(safeId).set(data);
+      } else if (targetHostel == 'boys') {
+        await FirebaseDatabase.instance.ref('hostelData_boys/notices').child(safeId).set(data);
+      } else if (targetHostel == 'girls') {
+        await FirebaseDatabase.instance.ref('hostelData_girls/notices').child(safeId).set(data);
+      } else {
+        await _dbRef.child('notices').child(safeId).set(data);
+      }
       globalSyncTrigger.value++;
     } catch (e) {
       print("Push notices error: $e");
@@ -2059,9 +2073,10 @@ class SyncService {
   /// Push only single complaint to Firebase
   static Future<void> pushSingleComplaint(ComplaintItem c) async {
     try {
+      final safeId = c.id.replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
       String photoUrl = c.complaintImageUrl ?? "";
-      await _dbRef.child('complaints').child(c.id).set({
-        'id': c.id,
+      await _dbRef.child('complaints').child(safeId).set({
+        'id': safeId,
         'title': c.title,
         'description': c.description,
         'date': c.date.toIso8601String(),
@@ -2266,11 +2281,11 @@ class SyncService {
 
   static Future<void> autoCloseIfExpired(String meal) async {
     try {
-      if (meal == 'l' && globalEntryL && isPastLunchCloseTime()) {
+      if (meal == 'l' && (globalEntryL || isPastLunchCloseTime())) {
         globalEntryL = false;
         await _dbRef.child('switches').child('globalEntryL').set(false);
         globalSyncTrigger.value++;
-      } else if (meal == 'd' && globalEntryD && isPastDinnerCloseTime()) {
+      } else if (meal == 'd' && (globalEntryD || isPastDinnerCloseTime())) {
         globalEntryD = false;
         await _dbRef.child('switches').child('globalEntryD').set(false);
         globalSyncTrigger.value++;
@@ -6004,6 +6019,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   bool _isEvicting = false;
   StreamSubscription? _studentsStreamSub;
   Timer? _evictionPollTimer;
+  Timer? _autoCloseStudentTimer;
 
   @override
   void initState() {
@@ -6012,6 +6028,23 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     globalSyncTrigger.addListener(_onSync); // Auto-refresh when dashboard opens
     _initDirectStudentListener();
     _startEvictionHeartbeat();
+
+    // Auto-close check every 10 seconds to ensure instant close at scheduled time
+    _autoCloseStudentTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted) return;
+      bool changed = false;
+      if (globalEntryL && isPastLunchCloseTime()) {
+        SyncService.autoCloseIfExpired('l');
+        changed = true;
+      }
+      if (globalEntryD && isPastDinnerCloseTime()) {
+        SyncService.autoCloseIfExpired('d');
+        changed = true;
+      }
+      if (changed && mounted) {
+        setState(() {});
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await SyncService.fetchNow();
@@ -6093,6 +6126,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
   void dispose() {
     _studentsStreamSub?.cancel();
     _evictionPollTimer?.cancel();
+    _autoCloseStudentTimer?.cancel();
     globalSyncTrigger.removeListener(_onSync);
     _lunchMsgTimer?.cancel();
     _dinnerMsgTimer?.cancel();
@@ -6266,8 +6300,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                 ),
                 const Divider(
                   height: 32,
-                ), // LUNCH SECTION - only show when admin has entry ON
-                if (globalEntryL) ...[
+                ), // LUNCH SECTION - only show when entry is ON and not expired, OR if student already marked today
+                if ((globalEntryL && !isPastLunchCloseTime()) || todayRecord.l.isNotEmpty) ...[
                   const Text(
                     "Lunch",
                     style: TextStyle(
@@ -6277,31 +6311,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (todayRecord.l.isEmpty && isPastLunchCloseTime())
-                    Builder(builder: (_) {
-                      SyncService.autoCloseIfExpired('l');
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.amber.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.schedule, color: Colors.amber.shade800, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                "Lunch mess entry closed at ${formatTimeOfDay(globalLunchCloseHour, globalLunchCloseMinute)}.",
-                                style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w600, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    })
-                  else if (todayRecord.l.isNotEmpty)
+                  if (todayRecord.l.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -6375,7 +6385,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 ),
                               ),
                             ),
-                          if (todayRecord.l == 'A')
+                          if (todayRecord.l == 'A' && (globalEntryL && !isPastLunchCloseTime()))
                             TextButton(
                               onPressed: () async {
                                 setState(() {
@@ -6394,7 +6404,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         ],
                       ),
                     )
-                  else if (todayRecord.l.isEmpty)
+                  else if (todayRecord.l.isEmpty && (globalEntryL && !isPastLunchCloseTime()))
                     Column(
                       children: [
                         SwipeToConfirm(
@@ -6474,8 +6484,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                   const SizedBox(height: 24),
                   const Divider(height: 1),
                   const SizedBox(height: 24),
-                ], // DINNER SECTION - only show when admin has entry ON
-                if (globalEntryD) ...[
+                ], // DINNER SECTION - only show when entry is ON and not expired, OR if student already marked today
+                if ((globalEntryD && !isPastDinnerCloseTime()) || todayRecord.d.isNotEmpty) ...[
                   const Text(
                     "Dinner",
                     style: TextStyle(
@@ -6485,31 +6495,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  if (todayRecord.d.isEmpty && isPastDinnerCloseTime())
-                    Builder(builder: (_) {
-                      SyncService.autoCloseIfExpired('d');
-                      return Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.amber.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.schedule, color: Colors.amber.shade800, size: 20),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                "Dinner mess entry closed at ${formatTimeOfDay(globalDinnerCloseHour, globalDinnerCloseMinute)}.",
-                                style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w600, fontSize: 13),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    })
-                  else if (todayRecord.d.isNotEmpty)
+                  if (todayRecord.d.isNotEmpty)
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -6583,7 +6569,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                                 ),
                               ),
                             ),
-                          if (todayRecord.d == 'A')
+                          if (todayRecord.d == 'A' && (globalEntryD && !isPastDinnerCloseTime()))
                             TextButton(
                               onPressed: () async {
                                 setState(() {
@@ -6602,7 +6588,7 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
                         ],
                       ),
                     )
-                  else if (todayRecord.d.isEmpty)
+                  else if (todayRecord.d.isEmpty && (globalEntryD && !isPastDinnerCloseTime()))
                     Column(
                       children: [
                         SwipeToConfirm(
@@ -9866,86 +9852,125 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   void _showAddNoticeDialog() {
     final titleCtrl = TextEditingController();
     final msgCtrl = TextEditingController();
+    final currentAdmin = widget.phone != null
+        ? globalAdmins.cast<AdminUser?>().firstWhere(
+            (a) => a?.phone == widget.phone,
+            orElse: () => null,
+          )
+        : null;
+    final scope = currentAdmin?.hostelScope.trim().toLowerCase() ?? cachedAdminScope?.trim().toLowerCase() ?? 'both';
+    String selectedTarget = scope == 'both' ? 'both' : (scope == 'girls' ? 'girls' : 'boys');
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          "New Notice",
-          style: TextStyle(color: brandDark, fontWeight: FontWeight.bold),
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleCtrl,
-                decoration: InputDecoration(
-                  labelText: "Notice Title",
-                  filled: true,
-                  fillColor: brandInputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: msgCtrl,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  labelText: "Message",
-                  filled: true,
-                  fillColor: brandInputBg,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            "New Notice",
+            style: TextStyle(color: brandDark, fontWeight: FontWeight.bold),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: brandGray)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: brandGreen,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            onPressed: () async {
-              if (titleCtrl.text.isNotEmpty && msgCtrl.text.isNotEmpty) {
-                setState(() {
-                  globalNotices.insert(
-                    0,
-                    NoticeItem(
-                      realTime.toString(),
-                      titleCtrl.text,
-                      msgCtrl.text,
-                      realTime,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (scope == 'both') ...[
+                  const Text("Send Notice To:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: brandDark)),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: brandInputBg,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  );
-                });
-                await SyncService.pushSingleNotice(globalNotices[0]);
-                NotificationService.sendPushNotificationToStudents(
-                  titleCtrl.text,
-                  msgCtrl.text,
-                );
-                Navigator.pop(context);
-              }
-            },
-            child: const Text(
-              "Send Notice",
-              style: TextStyle(color: Colors.white),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: selectedTarget,
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(value: 'both', child: Text("Both Hostels (Boys & Girls)")),
+                          DropdownMenuItem(value: 'boys', child: Text("Boys Hostel Only")),
+                          DropdownMenuItem(value: 'girls', child: Text("Girls Hostel Only")),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() => selectedTarget = val);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextField(
+                  controller: titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: "Notice Title",
+                    filled: true,
+                    fillColor: brandInputBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: msgCtrl,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    labelText: "Message",
+                    filled: true,
+                    fillColor: brandInputBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel", style: TextStyle(color: brandGray)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: brandGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: () async {
+                if (titleCtrl.text.trim().isNotEmpty && msgCtrl.text.trim().isNotEmpty) {
+                  final safeId = "notice_${DateTime.now().millisecondsSinceEpoch}";
+                  final newNotice = NoticeItem(
+                    safeId,
+                    titleCtrl.text.trim(),
+                    msgCtrl.text.trim(),
+                    realTime,
+                  );
+                  setState(() {
+                    globalNotices.insert(0, newNotice);
+                  });
+                  await SyncService.pushSingleNotice(newNotice, targetHostel: selectedTarget);
+                  NotificationService.sendPushNotificationToStudents(
+                    titleCtrl.text.trim(),
+                    msgCtrl.text.trim(),
+                  );
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text(
+                "Send Notice",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -11956,6 +11981,12 @@ class StudentComplaintsScreen extends StatefulWidget {
 }
 
 class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    SyncService.fetchNow();
+  }
+
   void _tryOpenAddComplaint() {
     final isPortalOpen = globalComplaintWindowConfig.isCurrentlyOpen();
     if (!isPortalOpen) {
@@ -12157,22 +12188,21 @@ class _StudentComplaintsScreenState extends State<StudentComplaintsScreen> {
                       );
                       return;
                     }
+                    final safeId = "complaint_${DateTime.now().millisecondsSinceEpoch}_${widget.roomNo}_${widget.name}".replaceAll(RegExp(r'[.#$\[\]/\s]'), '_');
+                    final newComplaint = ComplaintItem(
+                      safeId,
+                      titleCtrl.text.trim(),
+                      msgCtrl.text.trim(),
+                      realTime,
+                      widget.name,
+                      widget.roomNo,
+                      widget.photoUrl,
+                      localComplaintImageUrl,
+                    );
                     setState(() {
-                      globalComplaints.insert(
-                        0,
-                        ComplaintItem(
-                          realTime.toString(),
-                          titleCtrl.text,
-                          msgCtrl.text,
-                          realTime,
-                          widget.name,
-                          widget.roomNo,
-                          widget.photoUrl,
-                          localComplaintImageUrl,
-                        ),
-                      );
+                      globalComplaints.insert(0, newComplaint);
                     });
-                    await SyncService.pushSingleComplaint(globalComplaints[0]);
+                    await SyncService.pushSingleComplaint(newComplaint);
                     NotificationService.sendPushNotificationToAdmins(
                       "New Complaint (${globalHostelMode.toUpperCase()}): ${titleCtrl.text}",
                       "${widget.name} (${widget.roomNo}) has submitted a complaint.",
@@ -12450,6 +12480,12 @@ class AdminComplaintsScreen extends StatefulWidget {
 }
 
 class _AdminComplaintsScreenState extends State<AdminComplaintsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    SyncService.fetchNow();
+  }
+
   void _showScheduleDialog() {
     bool currentIsOpen = globalComplaintWindowConfig.isOpen;
     String currentMode = globalComplaintWindowConfig.mode; // 'toggle' or 'dates'
