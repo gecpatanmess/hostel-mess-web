@@ -1,1 +1,10 @@
-{"app_name":"hostelmessmanagment","version":"2.0.4","build_number":"131","package_name":"hostelmessmanagment"}
+{
+  "app_name": "hostelmessmanagment",
+  "version": "2.0.5",
+  "build_number": "132",
+  "package_name": "hostelmessmanagment",
+  "apk_url": "https://github.com/gecpatanmess/hostel-mess-web/releases/download/v2.0.5/app-release.apk",
+  "ios_url": "",
+  "is_mandatory": true,
+  "changelog": "v2.0.5: Fixed menu upload & viewing for Boys and Girls, eliminated lag/freeze auto-close loop, and optimized performance for 2000+ users."
+}

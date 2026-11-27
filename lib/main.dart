@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'dart:async';
 import 'notification_service.dart';
 import 'dart:math' as math;
@@ -317,255 +318,273 @@ class ViewMenuTab extends StatelessWidget {
   const ViewMenuTab({super.key});
   @override
   Widget build(BuildContext context) {
-    final defaultMenu =
-        defaultWeeklyMenu[realTime.weekday] ??
-        defaultWeeklyMenu[DateTime.monday]!;
-    final now = realTime;
-    final todayStr =
-        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
-    final weekDay = now.weekday;
-    return FutureBuilder<List<DataSnapshot>>(
-      future: Future.wait([
-        FirebaseDatabase.instance
-            .ref('hostelData_$globalHostelMode/weekly_template/$weekDay')
-            .get(),
-        FirebaseDatabase.instance
-            .ref('hostelData_$globalHostelMode/daily_menus/$todayStr')
-            .get(),
-      ]),
-      builder: (context, snapshot) {
-        String bf = defaultMenu['breakfast']!;
-        String lu = defaultMenu['lunch']!;
-        String dn = defaultMenu['dinner']!;
-        if (snapshot.hasData) {
-          // 1. Weekly template override
-          final weekSnap = snapshot.data![0];
-          if (weekSnap.exists && weekSnap.value != null) {
-            final wData = Map<String, dynamic>.from(weekSnap.value as Map);
-            if (wData['breakfast'] != null &&
-                wData['breakfast'].toString().trim().isNotEmpty)
-              bf = wData['breakfast'];
-            if (wData['lunch'] != null &&
-                wData['lunch'].toString().trim().isNotEmpty)
-              lu = wData['lunch'];
-            if (wData['dinner'] != null &&
-                wData['dinner'].toString().trim().isNotEmpty)
-              dn = wData['dinner'];
-          } // 2. Daily override
-          final daySnap = snapshot.data![1];
-          if (daySnap.exists && daySnap.value != null) {
-            final dData = Map<String, dynamic>.from(daySnap.value as Map);
-            if (dData['breakfast'] != null &&
-                dData['breakfast'].toString().trim().isNotEmpty)
-              bf = dData['breakfast'];
-            if (dData['lunch'] != null &&
-                dData['lunch'].toString().trim().isNotEmpty)
-              lu = dData['lunch'];
-            if (dData['dinner'] != null &&
-                dData['dinner'].toString().trim().isNotEmpty)
-              dn = dData['dinner'];
-          }
-        }
+    return ValueListenableBuilder<int>(
+      valueListenable: globalSyncTrigger,
+      builder: (context, _, __) {
+        final defaultMenu =
+            defaultWeeklyMenu[realTime.weekday] ??
+            defaultWeeklyMenu[DateTime.monday]!;
         final now = realTime;
-        final months = [
-          '',
-          'January',
-          'February',
-          'March',
-          'April',
-          'May',
-          'June',
-          'July',
-          'August',
-          'September',
-          'October',
-          'November',
-          'December',
-        ];
-        final days = [
-          '',
-          'Monday',
-          'Tuesday',
-          'Wednesday',
-          'Thursday',
-          'Friday',
-          'Saturday',
-          'Sunday',
-        ];
-        String dateStr =
-            "${days[now.weekday]}, ${now.day} ${months[now.month]} ${now.year}"; // 3 Demo Photos for the cards // Breakfast // Lunch bowl // Dinner spread // Original Main Menu Viewer (Hidden by default)
-        Widget mediaViewer;
-        if (globalMenuIsPdf) {
-          if (globalMenuUploadBytes != null) {
-            mediaViewer = SizedBox(
-              height: 400,
-              child: SfPdfViewer.memory(globalMenuUploadBytes!),
-            );
-          } else if (globalMenuUrl != null &&
-              globalMenuUrl!.isNotEmpty &&
-              globalMenuUrl!.startsWith('http')) {
-            mediaViewer = SizedBox(
-              height: 400,
-              child: SfPdfViewer.network(globalMenuUrl!),
-            );
-          } else if (globalMenuFile != null) {
-            mediaViewer = SizedBox(
-              height: 400,
-              child: SfPdfViewer.file(globalMenuFile!),
-            );
-          } else {
-            mediaViewer = const Padding(
-              padding: EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  "No menu uploaded",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            );
-          }
-        } else {
-          if (globalMenuUploadBytes != null) {
-            mediaViewer = InteractiveViewer(
-              child: Center(child: Image.memory(globalMenuUploadBytes!)),
-            );
-          } else if (globalMenuUrl != null &&
-              globalMenuUrl!.isNotEmpty &&
-              globalMenuUrl!.startsWith('http')) {
-            mediaViewer = InteractiveViewer(
-              child: Center(child: Image.network(globalMenuUrl!)),
-            );
-          } else if (globalMenuFile != null && !kIsWeb) {
-            mediaViewer = InteractiveViewer(
-              child: Center(child: Image.file(globalMenuFile!)),
-            );
-          } else {
-            mediaViewer = const Padding(
-              padding: EdgeInsets.all(20),
-              child: Center(
-                child: Text(
-                  "No menu uploaded",
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-            );
-          }
-        }
-        return Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
-            ),
-          ),
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              // Header
-              Center(
-                child: Column(
-                  children: [
-                    const Text("🍽️", style: TextStyle(fontSize: 36)),
-                    const SizedBox(height: 8),
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
-                      ).createShader(bounds),
-                      child: const Text(
-                        "TODAY'S MENU",
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 3,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      dateStr,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.white.withOpacity(0.6),
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ), // Breakfast Card
-              _buildMealCard(
-                icon: "🌅",
-                title: "BREAKFAST",
-                items: bf,
-                color: const Color(0xFF4CAF50),
-                imageOnRight: true,
-              ),
-              const SizedBox(height: 16), // Lunch Card
-              _buildMealCard(
-                icon: "☀️",
-                title: "LUNCH",
-                items: lu,
-                color: const Color(0xFF4CAF50),
-                imageOnRight: false,
-              ),
-              const SizedBox(height: 16), // Dinner Card
-              _buildMealCard(
-                icon: "🌙",
-                title: "DINNER",
-                items: dn,
-                color: const Color(0xFF7B68EE),
-                imageOnRight: true,
-              ),
-              const SizedBox(height: 24), // Hidden Uploaded Menu Section
-              Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+        final todayStr =
+            "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+        final weekDay = now.weekday;
+        return FutureBuilder<List<DataSnapshot>>(
+          future: Future.wait([
+            FirebaseDatabase.instance
+                .ref('hostelData_$globalHostelMode/weekly_template/$weekDay')
+                .get(),
+            FirebaseDatabase.instance
+                .ref('hostelData_$globalHostelMode/daily_menus/$todayStr')
+                .get(),
+            FirebaseDatabase.instance
+                .ref('hostelData_$globalHostelMode/menu')
+                .get(),
+          ]),
+          builder: (context, snapshot) {
+            String bf = defaultMenu['breakfast']!;
+            String lu = defaultMenu['lunch']!;
+            String dn = defaultMenu['dinner']!;
+            Uint8List? activeMenuBytes = globalMenuUploadBytes;
+            bool activeMenuIsPdf = globalMenuIsPdf;
+
+            if (snapshot.hasData) {
+              // 1. Weekly template override
+              final weekSnap = snapshot.data![0];
+              if (weekSnap.exists && weekSnap.value != null) {
+                final wData = Map<String, dynamic>.from(weekSnap.value as Map);
+                if (wData['breakfast'] != null &&
+                    wData['breakfast'].toString().trim().isNotEmpty)
+                  bf = wData['breakfast'];
+                if (wData['lunch'] != null &&
+                    wData['lunch'].toString().trim().isNotEmpty)
+                  lu = wData['lunch'];
+                if (wData['dinner'] != null &&
+                    wData['dinner'].toString().trim().isNotEmpty)
+                  dn = wData['dinner'];
+              }
+              // 2. Daily override
+              final daySnap = snapshot.data![1];
+              if (daySnap.exists && daySnap.value != null) {
+                final dData = Map<String, dynamic>.from(daySnap.value as Map);
+                if (dData['breakfast'] != null &&
+                    dData['breakfast'].toString().trim().isNotEmpty)
+                  bf = dData['breakfast'];
+                if (dData['lunch'] != null &&
+                    dData['lunch'].toString().trim().isNotEmpty)
+                  lu = dData['lunch'];
+                if (dData['dinner'] != null &&
+                    dData['dinner'].toString().trim().isNotEmpty)
+                  dn = dData['dinner'];
+              }
+              // 3. Uploaded photo/pdf menu for this hostel
+              if (snapshot.data!.length > 2) {
+                final menuSnap = snapshot.data![2];
+                if (menuSnap.exists && menuSnap.value != null) {
+                  try {
+                    final mData = Map<String, dynamic>.from(menuSnap.value as Map);
+                    activeMenuIsPdf = mData['isPdf'] ?? false;
+                    String b64 = mData['fileBase64'] ?? '';
+                    if (b64.isNotEmpty) {
+                      activeMenuBytes = base64Decode(b64);
+                      globalMenuUploadBytes = activeMenuBytes;
+                      globalMenuIsPdf = activeMenuIsPdf;
+                    }
+                  } catch (e) {
+                    print("Error decoding menu in ViewMenuTab: $e");
+                  }
+                }
+              }
+            }
+            final months = [
+              '',
+              'January',
+              'February',
+              'March',
+              'April',
+              'May',
+              'June',
+              'July',
+              'August',
+              'September',
+              'October',
+              'November',
+              'December',
+            ];
+            final days = [
+              '',
+              'Monday',
+              'Tuesday',
+              'Wednesday',
+              'Thursday',
+              'Friday',
+              'Saturday',
+              'Sunday',
+            ];
+            String dateStr =
+                "${days[now.weekday]}, ${now.day} ${months[now.month]} ${now.year}";
+
+            Widget mediaViewer;
+            if (activeMenuBytes != null && activeMenuBytes.isNotEmpty) {
+              if (activeMenuIsPdf) {
+                mediaViewer = ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    height: 480,
+                    child: SfPdfViewer.memory(activeMenuBytes),
                   ),
-                  child: ExpansionTile(
-                    title: const Text(
-                      "📄 View Original Menu",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                );
+              } else {
+                mediaViewer = ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: InteractiveViewer(
+                    panEnabled: true,
+                    minScale: 0.5,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Image.memory(
+                        activeMenuBytes,
+                        fit: BoxFit.contain,
                       ),
                     ),
-                    subtitle: Text(
-                      "Click to view the menu uploaded by Admin",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 12,
-                      ),
-                    ),
-                    iconColor: Colors.white,
-                    collapsedIconColor: Colors.white.withOpacity(0.7),
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(maxHeight: 500),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.2),
-                          borderRadius: const BorderRadius.only(
-                            bottomLeft: Radius.circular(16),
-                            bottomRight: Radius.circular(16),
+                  ),
+                );
+              }
+            } else {
+              mediaViewer = const Padding(
+                padding: EdgeInsets.all(20),
+                child: Center(
+                  child: Text(
+                    "No photo or PDF menu uploaded for this hostel",
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+              );
+            }
+
+            return Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF1a1a2e), Color(0xFF16213e), Color(0xFF0f3460)],
+                ),
+              ),
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  // Header
+                  Center(
+                    child: Column(
+                      children: [
+                        const Text("🍽️", style: TextStyle(fontSize: 36)),
+                        const SizedBox(height: 8),
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [Color(0xFFFFD700), Color(0xFFFFA500)],
+                          ).createShader(bounds),
+                          child: Text(
+                            "${globalHostelMode == 'boys' ? 'BOYS' : 'GIRLS'} MENU",
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 2,
+                            ),
                           ),
                         ),
-                        child: mediaViewer,
-                      ),
-                    ],
+                        const SizedBox(height: 6),
+                        Text(
+                          dateStr,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.white.withOpacity(0.6),
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+                    ),
                   ),
-                ),
+                  // Breakfast Card
+                  _buildMealCard(
+                    icon: "🌅",
+                    title: "BREAKFAST",
+                    items: bf,
+                    color: const Color(0xFF4CAF50),
+                    imageOnRight: true,
+                  ),
+                  const SizedBox(height: 16),
+                  // Lunch Card
+                  _buildMealCard(
+                    icon: "☀️",
+                    title: "LUNCH",
+                    items: lu,
+                    color: const Color(0xFF4CAF50),
+                    imageOnRight: false,
+                  ),
+                  const SizedBox(height: 16),
+                  // Dinner Card
+                  _buildMealCard(
+                    icon: "🌙",
+                    title: "DINNER",
+                    items: dn,
+                    color: const Color(0xFF7B68EE),
+                    imageOnRight: true,
+                  ),
+                  const SizedBox(height: 24),
+                  // Uploaded Menu Section (Auto-expanded if uploaded)
+                  Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      ),
+                      child: ExpansionTile(
+                        initiallyExpanded: activeMenuBytes != null,
+                        title: Text(
+                          "📄 View Original Menu (${globalHostelMode == 'boys' ? 'Boys' : 'Girls'})",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        subtitle: Text(
+                          activeMenuBytes != null
+                              ? "Uploaded menu is ready to view"
+                              : "No photo/PDF menu uploaded yet",
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 12,
+                          ),
+                        ),
+                        iconColor: Colors.white,
+                        collapsedIconColor: Colors.white.withOpacity(0.7),
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            constraints: const BoxConstraints(maxHeight: 520),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.2),
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(16),
+                                bottomRight: Radius.circular(16),
+                              ),
+                            ),
+                            child: mediaViewer,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                ],
               ),
-              const SizedBox(height: 30),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -750,12 +769,20 @@ Widget buildComplaintImageWidget(String imgData, {double height = 150}) {
   );
 }
 
+final Map<int, Uint8List> _avatarBytesCache = {};
 ImageProvider? getSafeImageProvider(String? urlOrBase64) {
   if (urlOrBase64 == null || urlOrBase64.isEmpty) return null;
   if (urlOrBase64.startsWith('data:image') || !urlOrBase64.startsWith('http')) {
     try {
+      final h = urlOrBase64.hashCode;
+      if (_avatarBytesCache.containsKey(h)) {
+        return MemoryImage(_avatarBytesCache[h]!);
+      }
       String clean = urlOrBase64.contains(',') ? urlOrBase64.split(',').last : urlOrBase64;
-      return MemoryImage(base64Decode(clean));
+      final bytes = base64Decode(clean);
+      if (_avatarBytesCache.length > 500) _avatarBytesCache.clear();
+      _avatarBytesCache[h] = bytes;
+      return MemoryImage(bytes);
     } catch (_) {
       return null;
     }
@@ -1662,13 +1689,31 @@ class SyncService {
   static void setSwitchCooldown(bool val) => _switchCooldown = val;
   static bool _pollCooldown = false;
   static StreamSubscription? _firebaseSub;
+  static int _lastStudentsHash = 0;
+  static int _lastAdminsHash = 0;
+  static final Set<String> _processedAbsentMeals = {};
+  static Timer? _syncDebounceTimer;
+  static void triggerSync({bool immediate = false}) {
+    if (immediate) {
+      _syncDebounceTimer?.cancel();
+      globalSyncTrigger.value++;
+      return;
+    }
+    if (_syncDebounceTimer?.isActive ?? false) return;
+    _syncDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+      globalSyncTrigger.value++;
+    });
+  }
   static void cancelAllStreams() {
     _firebaseSub?.cancel();
+    _syncDebounceTimer?.cancel();
   }
   static Future<void> switchMode(String mode) async {
     globalHostelMode = mode;
     _hasDownloadedOnce = false;
     _lastHash = 0;
+    _lastStudentsHash = 0;
+    _lastAdminsHash = 0;
     globalMenuFile = null;
     globalMenuUrl = null;
     globalMenuUploadBytes = null;
@@ -1886,33 +1931,51 @@ class SyncService {
           if (rawData['menu'] != null) {
             globalMenuIsPdf = rawData['menu']['isPdf'] ?? false;
             String menuBase64 = rawData['menu']['fileBase64'] ?? '';
-            if (menuBase64.isNotEmpty && !kIsWeb) {
-              final dir = await getApplicationDocumentsDirectory();
-              String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
-              File mFile = File(
-                '${dir.path}/mess_menu_${realTime.millisecondsSinceEpoch}.$ext',
-              );
-              await mFile.writeAsBytes(base64Decode(menuBase64));
-              globalMenuFile = mFile;
-            } else if (menuBase64.isNotEmpty && kIsWeb) {
-              globalMenuUploadBytes = base64Decode(menuBase64);
+            if (menuBase64.isNotEmpty) {
+              if (menuBase64 != _lastDownloadedMenuBase64) {
+                _lastDownloadedMenuBase64 = menuBase64;
+                try {
+                  globalMenuUploadBytes = base64Decode(menuBase64);
+                  if (!kIsWeb) {
+                    final dir = await getApplicationDocumentsDirectory();
+                    String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
+                    File mFile = File('${dir.path}/mess_menu.$ext');
+                    await mFile.writeAsBytes(globalMenuUploadBytes!);
+                    globalMenuFile = mFile;
+                  }
+                } catch (e) {
+                  print("Fetch menu decode error: $e");
+                }
+              }
             } else {
+              _lastDownloadedMenuBase64 = "";
+              globalMenuUploadBytes = null;
               globalMenuFile = null;
             }
+          } else {
+            _lastDownloadedMenuBase64 = "";
+            globalMenuUploadBytes = null;
+            globalMenuFile = null;
           }
         } catch (e) {}
         Map<String, dynamic> data = jsonDecode(jsonEncode(rawData));
+        bool adminsChanged = false;
         if (data.containsKey('admins') && data['admins'] != null) {
-          globalAdmins.clear();
-          var adminsData = data['admins'];
-          var adminsList = adminsData is List
-              ? adminsData
-              : (adminsData is Map ? adminsData.values : []);
-          for (var a in adminsList) {
-            if (a != null) {
-              globalAdmins.add(
-                AdminUser.fromJson(Map<String, dynamic>.from(a)),
-              );
+          int newAdminsHash = data['admins'].toString().hashCode;
+          if (newAdminsHash != _lastAdminsHash) {
+            _lastAdminsHash = newAdminsHash;
+            adminsChanged = true;
+            globalAdmins.clear();
+            var adminsData = data['admins'];
+            var adminsList = adminsData is List
+                ? adminsData
+                : (adminsData is Map ? adminsData.values : []);
+            for (var a in adminsList) {
+              if (a != null) {
+                globalAdmins.add(
+                  AdminUser.fromJson(Map<String, dynamic>.from(a)),
+                );
+              }
             }
           }
         }
@@ -1970,16 +2033,22 @@ class SyncService {
             dynamicPolls[k.toString()] = DynamicPoll.fromJson(v, k.toString());
           });
         }
-        globalRegisteredStudents.clear();
+        bool studentsChanged = false;
         if (data['students'] != null) {
-          var studentsData = data['students'];
-          var studentsList = studentsData is List
-              ? studentsData
-              : (studentsData is Map ? studentsData.values : []);
-          for (var s in studentsList) {
-            if (s != null) {
-              var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(s));
-              if (st.isValid) globalRegisteredStudents.add(st);
+          int newStudentsHash = data['students'].toString().hashCode;
+          if (newStudentsHash != _lastStudentsHash) {
+            _lastStudentsHash = newStudentsHash;
+            studentsChanged = true;
+            globalRegisteredStudents.clear();
+            var studentsData = data['students'];
+            var studentsList = studentsData is List
+                ? studentsData
+                : (studentsData is Map ? studentsData.values : []);
+            for (var s in studentsList) {
+              if (s != null) {
+                var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(s));
+                if (st.isValid) globalRegisteredStudents.add(st);
+              }
             }
           }
         }
@@ -2231,19 +2300,24 @@ class SyncService {
   }
 
   /// Push only menu to Firebase
-  static Future<void> pushMenu() async {
+  static Future<void> pushMenu({String? targetHostel}) async {
+    final hostel = targetHostel ?? globalHostelMode;
+    final dbRef = FirebaseDatabase.instance.ref('hostelData_$hostel');
     if (globalMenuFile == null && globalMenuUploadBytes == null) {
       try {
-        await _dbRef.child('menu').remove();
+        await dbRef.child('menu').remove();
         globalSyncTrigger.value++;
       } catch (e) {}
       return;
     }
     try {
-      final bytes =
-          globalMenuUploadBytes ?? await globalMenuFile!.readAsBytes();
+      Uint8List? bytes = globalMenuUploadBytes;
+      if (bytes == null && globalMenuFile != null) {
+        bytes = await globalMenuFile!.readAsBytes();
+      }
+      if (bytes == null || bytes.isEmpty) return;
       final fileBase64 = base64Encode(bytes);
-      await _dbRef.child('menu').set({
+      await dbRef.child('menu').set({
         'isPdf': globalMenuIsPdf,
         'fileBase64': fileBase64,
         'updated_at': realTime.toIso8601String(),
@@ -2386,6 +2460,9 @@ class SyncService {
           (now.hour > dinnerHour) ||
           (now.hour == dinnerHour && now.minute >= dinnerMinute);
       
+      final lunchKey = "${hostel}_l_$todayStr";
+      final dinnerKey = "${hostel}_d_$todayStr";
+      
       bool didClose = false;
       
       // Auto close Lunch if expired
@@ -2394,10 +2471,11 @@ class SyncService {
         if (hostel == globalHostelMode) {
           globalEntryL = false;
         }
-        await markAbsentForMealInHostel(hostel, 'l');
+        if (!_processedAbsentMeals.contains(lunchKey)) {
+          _processedAbsentMeals.add(lunchKey);
+          await markAbsentForMealInHostel(hostel, 'l');
+        }
         didClose = true;
-      } else if (!entryL && isPastLunch && lunchOpenedDate == todayStr) {
-        await markAbsentForMealInHostel(hostel, 'l');
       }
       
       // Auto close Dinner if expired
@@ -2406,10 +2484,11 @@ class SyncService {
         if (hostel == globalHostelMode) {
           globalEntryD = false;
         }
-        await markAbsentForMealInHostel(hostel, 'd');
+        if (!_processedAbsentMeals.contains(dinnerKey)) {
+          _processedAbsentMeals.add(dinnerKey);
+          await markAbsentForMealInHostel(hostel, 'd');
+        }
         didClose = true;
-      } else if (!entryD && isPastDinner && dinnerOpenedDate == todayStr) {
-        await markAbsentForMealInHostel(hostel, 'd');
       }
       
       return didClose;
@@ -2511,17 +2590,23 @@ class SyncService {
       try {
         Map<dynamic, dynamic> data =
             snap.value as Map<dynamic, dynamic>;
+        bool adminsChanged = false;
         if (data.containsKey('admins') && data['admins'] != null) {
-          globalAdmins.clear();
-          var adminsData = data['admins'];
-          var adminsList = adminsData is List
-              ? adminsData
-              : (adminsData is Map ? adminsData.values : []);
-          for (var a in adminsList) {
-            if (a != null) {
-              globalAdmins.add(
-                AdminUser.fromJson(Map<String, dynamic>.from(a)),
-              );
+          int newAdminsHash = data['admins'].toString().hashCode;
+          if (newAdminsHash != _lastAdminsHash) {
+            _lastAdminsHash = newAdminsHash;
+            adminsChanged = true;
+            globalAdmins.clear();
+            var adminsData = data['admins'];
+            var adminsList = adminsData is List
+                ? adminsData
+                : (adminsData is Map ? adminsData.values : []);
+            for (var a in adminsList) {
+              if (a != null) {
+                globalAdmins.add(
+                  AdminUser.fromJson(Map<String, dynamic>.from(a)),
+                );
+              }
             }
           }
         }
@@ -2581,23 +2666,31 @@ class SyncService {
         if (data['menu'] != null) {
           globalMenuIsPdf = data['menu']['isPdf'] ?? false;
           String menuBase64 = data['menu']['fileBase64'] ?? '';
-          if (menuBase64 != _lastDownloadedMenuBase64) {
-            _lastDownloadedMenuBase64 = menuBase64;
-            if (menuBase64.isNotEmpty && !kIsWeb) {
-              if (kIsWeb) return;
-              final dir = await getApplicationDocumentsDirectory();
-              String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
-              File mFile = File(
-                '${dir.path}/mess_menu_${realTime.millisecondsSinceEpoch}.$ext',
-              );
-              await mFile.writeAsBytes(base64Decode(menuBase64));
-              globalMenuFile = mFile;
-              _lastMenuPath = mFile.path;
-            } else {
-              globalMenuFile = null;
-              _lastMenuPath = "";
+          if (menuBase64.isNotEmpty) {
+            if (menuBase64 != _lastDownloadedMenuBase64) {
+              _lastDownloadedMenuBase64 = menuBase64;
+              try {
+                globalMenuUploadBytes = base64Decode(menuBase64);
+                if (!kIsWeb) {
+                  final dir = await getApplicationDocumentsDirectory();
+                  String ext = globalMenuIsPdf ? 'pdf' : 'jpg';
+                  File mFile = File('${dir.path}/mess_menu.$ext');
+                  await mFile.writeAsBytes(globalMenuUploadBytes!);
+                  globalMenuFile = mFile;
+                }
+              } catch (e) {
+                print("Listen menu decode error: $e");
+              }
             }
+          } else {
+            _lastDownloadedMenuBase64 = "";
+            globalMenuUploadBytes = null;
+            globalMenuFile = null;
           }
+        } else {
+          _lastDownloadedMenuBase64 = "";
+          globalMenuUploadBytes = null;
+          globalMenuFile = null;
         }
         if (data['switches'] != null && !_switchCooldown) {
           globalEntryL = data['switches']['globalEntryL'] ?? false;
@@ -2608,16 +2701,22 @@ class SyncService {
             data['adminLastViewed'],
           );
         }
-        globalRegisteredStudents.clear();
+        bool studentsChanged = false;
         if (data['students'] != null) {
-          var studentsData = data['students'];
-          var studentsList = studentsData is List
-              ? studentsData
-              : (studentsData is Map ? studentsData.values : []);
-          for (var s in studentsList) {
-            if (s != null) {
-              var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(s));
-              if (st.isValid) globalRegisteredStudents.add(st);
+          int newStudentsHash = data['students'].toString().hashCode;
+          if (newStudentsHash != _lastStudentsHash) {
+            _lastStudentsHash = newStudentsHash;
+            studentsChanged = true;
+            globalRegisteredStudents.clear();
+            var studentsData = data['students'];
+            var studentsList = studentsData is List
+                ? studentsData
+                : (studentsData is Map ? studentsData.values : []);
+            for (var s in studentsList) {
+              if (s != null) {
+                var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(s));
+                if (st.isValid) globalRegisteredStudents.add(st);
+              }
             }
           }
         }
@@ -2674,13 +2773,17 @@ class SyncService {
           });
           globalComplaints.sort((a, b) => b.date.compareTo(a.date));
         }
-        await saveRegisteredStudents();
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setStringList(
-          'globalAdmins',
-          globalAdmins.map((a) => jsonEncode(a.toJson())).toList(),
-        );
-        globalSyncTrigger.value++;
+        if (studentsChanged) {
+          await saveRegisteredStudents();
+        }
+        if (adminsChanged) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setStringList(
+            'globalAdmins',
+            globalAdmins.map((a) => jsonEncode(a.toJson())).toList(),
+          );
+        }
+        triggerSync();
       } catch (e) {
         print("Sync Listen Error: $e");
       }
@@ -6169,16 +6272,16 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     _initDirectStudentListener();
     _startEvictionHeartbeat();
 
-    // Auto-close check every 1 second to ensure instant close at scheduled time
-    _autoCloseStudentTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    // Auto-close check every 15 seconds to ensure instant close at scheduled time without flooding Firebase
+    _autoCloseStudentTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
       bool changed = false;
       if (globalEntryL && isPastLunchCloseTime()) {
-        SyncService.autoCloseIfExpired('l');
+        globalEntryL = false;
         changed = true;
       }
       if (globalEntryD && isPastDinnerCloseTime()) {
-        SyncService.autoCloseIfExpired('d');
+        globalEntryD = false;
         changed = true;
       }
       
@@ -6189,15 +6292,17 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
       
       if (isPastLunchCloseTime() && (todayRec == null || todayRec.l.isEmpty || todayRec.l == '-')) {
         globalAttendanceMap.putIfAbsent(key, () => DailyRecord());
-        globalAttendanceMap[key]!.l = 'A';
-        SyncService.pushAttendance(key, globalAttendanceMap[key]!);
-        changed = true;
+        if (globalAttendanceMap[key]!.l != 'A') {
+          globalAttendanceMap[key]!.l = 'A';
+          changed = true;
+        }
       }
       if (isPastDinnerCloseTime() && (todayRec == null || todayRec.d.isEmpty || todayRec.d == '-')) {
         globalAttendanceMap.putIfAbsent(key, () => DailyRecord());
-        globalAttendanceMap[key]!.d = 'A';
-        SyncService.pushAttendance(key, globalAttendanceMap[key]!);
-        changed = true;
+        if (globalAttendanceMap[key]!.d != 'A') {
+          globalAttendanceMap[key]!.d = 'A';
+          changed = true;
+        }
       }
       
       if (changed && mounted) {
@@ -6241,8 +6346,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
 
   void _startEvictionHeartbeat() {
     _evictionPollTimer?.cancel();
-    // 60-second fallback poll ensures auto-logout check without flooding Firebase under 500 users
-    _evictionPollTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+    // 10-minute fallback poll ensures auto-logout check without flooding Firebase under 2000 users
+    _evictionPollTimer = Timer.periodic(const Duration(minutes: 10), (_) async {
       if (_isEvicting || !mounted) return;
       try {
         final snap = await FirebaseDatabase.instance
@@ -7815,7 +7920,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _initRolesListener();
     _startAdminEvictionHeartbeat();
     _autoCloseCheckTimer = Timer.periodic(
-      const Duration(seconds: 5),
+      const Duration(seconds: 30),
       (_) => _checkAutoClose(),
     );
 
@@ -7844,8 +7949,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         for (int m = now.month - 1; m >= 1; m--) {
           if (!mounted) break;
           await fetchAttendanceMonth(now.year, m);
-          if (mounted) setState(() {});
         }
+        if (mounted) setState(() {});
       });
     });
   }
@@ -7886,8 +7991,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _startAdminEvictionHeartbeat() {
     _adminEvictionPollTimer?.cancel();
-    // 60-second fallback poll ensures auto-logout check without flooding Firebase under 500 users
-    _adminEvictionPollTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+    // 10-minute fallback poll ensures auto-logout check without flooding Firebase under 2000 users
+    _adminEvictionPollTimer = Timer.periodic(const Duration(minutes: 10), (_) async {
       if (_isEvicting || !mounted) return;
       try {
         final snap = await FirebaseDatabase.instance
@@ -10290,6 +10395,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final todayStr = "${now.year}-${now.month}-${now.day}";
       if (meal == 'l') globalLunchOpenedDate = todayStr;
       if (meal == 'd') globalDinnerOpenedDate = todayStr;
+      SyncService._processedAbsentMeals.remove("${globalHostelMode}_${meal}_$todayStr");
       NotificationService.sendPushNotificationToStudents(
         "$mealName Time",
         "Mess Open",
@@ -10370,6 +10476,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _closeMessAndMarkAbsent(String meal) async {
     try {
+      final now = realTime;
+      final todayStr = "${now.year}-${now.month}-${now.day}";
+      SyncService._processedAbsentMeals.add("${globalHostelMode}_${meal}_$todayStr");
       await SyncService.markAbsentForMealInHostel(globalHostelMode, meal);
       if (mounted) {
         setState(() {});
@@ -10389,6 +10498,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     String initialBreakfast = defaultMenu['breakfast']!;
     String initialLunch = defaultMenu['lunch']!;
     String initialDinner = defaultMenu['dinner']!;
+
+    // 1. Fetch daily menus text
     try {
       final snap = await FirebaseDatabase.instance
           .ref('hostelData_$globalHostelMode/daily_menus/$todayStr')
@@ -10405,9 +10516,30 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           initialDinner = data['dinner'];
       }
     } catch (e) {}
+
+    // 2. Fetch current hostel menu photo/pdf
+    try {
+      final menuSnap = await FirebaseDatabase.instance
+          .ref('hostelData_$globalHostelMode/menu')
+          .get();
+      if (menuSnap.exists && menuSnap.value != null) {
+        final mData = Map<String, dynamic>.from(menuSnap.value as Map);
+        globalMenuIsPdf = mData['isPdf'] ?? false;
+        String b64 = mData['fileBase64'] ?? '';
+        if (b64.isNotEmpty) {
+          globalMenuUploadBytes = base64Decode(b64);
+        }
+      } else {
+        globalMenuUploadBytes = null;
+        globalMenuFile = null;
+      }
+    } catch (e) {}
+
     final bfCtrl = TextEditingController(text: initialBreakfast);
     final luCtrl = TextEditingController(text: initialLunch);
     final dnCtrl = TextEditingController(text: initialDinner);
+    bool isUploadingMenu = false;
+
     showDialog(
       context: context,
       builder: (context) {
@@ -10417,9 +10549,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-              title: const Text(
-                "Edit Today's Menu",
-                style: TextStyle(fontWeight: FontWeight.bold, color: brandDark),
+              title: Text(
+                "Edit Today's Menu (${globalHostelMode == 'boys' ? 'Boys' : 'Girls'})",
+                style: const TextStyle(fontWeight: FontWeight.bold, color: brandDark),
               ),
               content: SingleChildScrollView(
                 child: Column(
@@ -10451,50 +10583,138 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                     const SizedBox(height: 24),
                     const Divider(),
                     const SizedBox(height: 8),
-                    const Text(
-                      "Photo/PDF Menu (Hidden)",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: brandGray,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Photo/PDF Menu (${globalHostelMode == 'boys' ? 'Boys' : 'Girls'})",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: brandDark,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (globalMenuUploadBytes != null)
+                          const Text(
+                            "Uploaded",
+                            style: TextStyle(
+                              color: brandGreen,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    if (globalMenuUrl == null &&
-                        globalMenuFile == null &&
-                        globalMenuUploadBytes == null)
+                    if (isUploadingMenu)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: brandInputBg,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Column(
+                          children: [
+                            CircularProgressIndicator(color: brandGreen),
+                            SizedBox(height: 12),
+                            Text(
+                              "Uploading menu to Firebase...",
+                              style: TextStyle(
+                                color: brandDark,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else if (globalMenuUploadBytes == null &&
+                        globalMenuFile == null)
                       InkWell(
                         onTap: () async {
-                          FilePickerResult? result = await FilePicker.pickFiles(
-                            type: FileType.custom,
-                            allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-                            withData: true,
-                          );
-                          if (result != null) {
-                            final file = result.files.single;
-                            if (file.bytes != null || file.path != null) {
+                          try {
+                            FilePickerResult? result = await FilePicker.pickFiles(
+                              type: FileType.custom,
+                              allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+                              withData: true,
+                            );
+                            if (result != null && result.files.isNotEmpty) {
+                              final file = result.files.single;
+                              Uint8List? rawBytes = file.bytes;
+                              if (rawBytes == null && file.path != null && !kIsWeb) {
+                                rawBytes = await File(file.path!).readAsBytes();
+                              }
+                              if (rawBytes == null || rawBytes.isEmpty) {
+                                throw Exception("Could not read file data.");
+                              }
+
+                              final bool isPdf = (file.extension?.toLowerCase() == 'pdf');
+
                               setDialogState(() {
-                                if (kIsWeb || file.path == null) {
-                                  globalMenuUploadBytes = file.bytes;
-                                  globalMenuFile = null;
-                                } else {
-                                  globalMenuFile = File(file.path!);
-                                  globalMenuUploadBytes = file.bytes;
+                                isUploadingMenu = true;
+                              });
+
+                              // Compress large images to avoid Firebase RTDB size issues
+                              if (!isPdf && rawBytes.lengthInBytes > 800 * 1024) {
+                                try {
+                                  final codec = await ui.instantiateImageCodec(
+                                    rawBytes,
+                                    targetWidth: 1280,
+                                  );
+                                  final frame = await codec.getNextFrame();
+                                  final byteData = await frame.image.toByteData(
+                                    format: ui.ImageByteFormat.png,
+                                  );
+                                  if (byteData != null) {
+                                    rawBytes = byteData.buffer.asUint8List();
+                                  }
+                                } catch (e) {
+                                  print("Image resize error: $e");
                                 }
-                                globalMenuIsPdf =
-                                    file.extension?.toLowerCase() == 'pdf';
+                              }
+
+                              final fileBase64 = base64Encode(rawBytes!);
+
+                              // Upload directly to current hostel node
+                              await FirebaseDatabase.instance
+                                  .ref('hostelData_$globalHostelMode/menu')
+                                  .set({
+                                    'isPdf': isPdf,
+                                    'fileBase64': fileBase64,
+                                    'updated_at': realTime.toIso8601String(),
+                                  });
+
+                              globalMenuIsPdf = isPdf;
+                              globalMenuUploadBytes = rawBytes;
+                              if (!kIsWeb && file.path != null) {
+                                globalMenuFile = File(file.path!);
+                              }
+                              globalSyncTrigger.value++;
+
+                              setDialogState(() {
+                                isUploadingMenu = false;
                               });
                               setState(() {});
-                              try {
-                                await SyncService.pushMenu();
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(e.toString()),
-                                    backgroundColor: Colors.red,
+
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Menu uploaded successfully for ${globalHostelMode == 'boys' ? 'Boys' : 'Girls'} hostel!",
                                   ),
-                                );
-                              }
+                                  backgroundColor: brandGreen,
+                                ),
+                              );
                             }
+                          } catch (e) {
+                            setDialogState(() {
+                              isUploadingMenu = false;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("Upload error: $e"),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
                           }
                         },
                         child: Container(
@@ -10532,6 +10752,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         decoration: BoxDecoration(
                           color: brandInputBg,
                           borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: brandGreen.withOpacity(0.4)),
                         ),
                         child: Row(
                           children: [
@@ -10544,13 +10765,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                globalMenuFile != null
-                                    ? globalMenuFile!.path
-                                          .split('/')
-                                          .last
-                                          .split('\\')
-                                          .last
-                                    : 'Uploaded Menu',
+                                globalMenuIsPdf
+                                    ? "Menu (PDF Document)"
+                                    : "Menu (Photo/Image)",
+                                style: const TextStyle(fontWeight: FontWeight.w600),
                                 maxLines: 2,
                                 overflow: TextOverflow.visible,
                               ),
@@ -10561,19 +10779,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 color: Colors.redAccent,
                               ),
                               onPressed: () async {
-                                setDialogState(() {
+                                try {
+                                  await FirebaseDatabase.instance
+                                      .ref('hostelData_$globalHostelMode/menu')
+                                      .remove();
                                   globalMenuFile = null;
                                   globalMenuUrl = null;
                                   globalMenuUploadBytes = null;
                                   globalMenuIsPdf = false;
-                                });
-                                setState(() {});
-                                try {
-                                  await SyncService.pushMenu();
+                                  globalSyncTrigger.value++;
+                                  setDialogState(() {});
+                                  setState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        "Menu removed for ${globalHostelMode == 'boys' ? 'Boys' : 'Girls'} hostel.",
+                                      ),
+                                      backgroundColor: Colors.red[700],
+                                    ),
+                                  );
                                 } catch (e) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
-                                      content: Text(e.toString()),
+                                      content: Text("Delete error: $e"),
                                       backgroundColor: Colors.red,
                                     ),
                                   );
