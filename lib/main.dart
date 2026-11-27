@@ -2279,13 +2279,153 @@ class SyncService {
     });
   }
 
+  static Future<void> markAbsentForMealInHostel(String hostel, String meal) async {
+    try {
+      final dbRef = FirebaseDatabase.instance.ref('hostelData_$hostel');
+      
+      // 1. Fetch registered students for this hostel
+      List<RegisteredStudent> students = [];
+      if (hostel == globalHostelMode && globalRegisteredStudents.isNotEmpty) {
+        students = List<RegisteredStudent>.from(globalRegisteredStudents);
+      } else {
+        final studSnap = await dbRef.child('students').get();
+        if (studSnap.exists && studSnap.value != null) {
+          var val = studSnap.value;
+          var list = val is List ? val : (val is Map ? val.values : []);
+          for (var item in list) {
+            if (item != null && item is Map) {
+              var st = RegisteredStudent.fromJson(Map<String, dynamic>.from(item));
+              if (st.isValid) students.add(st);
+            }
+          }
+        }
+      }
+      
+      if (students.isEmpty) return;
+      
+      // 2. Fetch current day attendance for this hostel
+      final now = realTime;
+      final todayStr = "${now.year}-${now.month}-${now.day}";
+      Map<dynamic, dynamic> attMap = {};
+      
+      if (hostel == globalHostelMode && globalAttendanceMap.isNotEmpty) {
+        // Memory cache available
+      } else {
+        final attSnap = await dbRef.child('attendance').get();
+        if (attSnap.exists && attSnap.value is Map) {
+          attMap = attSnap.value as Map<dynamic, dynamic>;
+        }
+      }
+      
+      Map<String, dynamic> batchUpdates = {};
+      
+      for (var s in students) {
+        if (!s.isValid) continue;
+        String rawKey = "${todayStr}_${s.roomNo}_${s.name}";
+        String safeKey = attendanceSafeKey(rawKey);
+        
+        String currentStatus = '';
+        if (hostel == globalHostelMode) {
+          final rec = globalAttendanceMap[safeKey] ?? globalAttendanceMap[rawKey];
+          if (rec != null) {
+            currentStatus = (meal == 'l' ? rec.l : rec.d).trim();
+          }
+        } else {
+          final rec = attMap[safeKey] ?? attMap[rawKey];
+          if (rec != null && rec is Map) {
+            currentStatus = (rec[meal] ?? '').toString().trim();
+          }
+        }
+        
+        // If student did not swipe 'P' and is not already marked 'A'
+        if (currentStatus.isEmpty || currentStatus == '-') {
+          batchUpdates["$safeKey/$meal"] = 'A';
+          if (hostel == globalHostelMode) {
+            globalAttendanceMap.putIfAbsent(safeKey, () => DailyRecord());
+            if (meal == 'l') globalAttendanceMap[safeKey]!.l = 'A';
+            if (meal == 'd') globalAttendanceMap[safeKey]!.d = 'A';
+          }
+        }
+      }
+      
+      if (batchUpdates.isNotEmpty) {
+        await dbRef.child('attendance').update(batchUpdates);
+        if (hostel == globalHostelMode) {
+          globalSyncTrigger.value++;
+        }
+      }
+    } catch (e) {
+      print("markAbsentForMealInHostel ($hostel, $meal) error: $e");
+    }
+  }
+
+  static Future<bool> checkAndExecuteAutoCloseForHostel(String hostel) async {
+    try {
+      final dbRef = FirebaseDatabase.instance.ref('hostelData_$hostel');
+      final snap = await dbRef.child('switches').get();
+      if (!snap.exists || snap.value == null) return false;
+      
+      Map<dynamic, dynamic> sw = snap.value as Map<dynamic, dynamic>;
+      bool entryL = sw['globalEntryL'] == true;
+      bool entryD = sw['globalEntryD'] == true;
+      int lunchHour = sw['lunchCloseHour'] ?? 14;
+      int lunchMinute = sw['lunchCloseMinute'] ?? 30;
+      int dinnerHour = sw['dinnerCloseHour'] ?? 21;
+      int dinnerMinute = sw['dinnerCloseMinute'] ?? 30;
+      String lunchOpenedDate = (sw['lunchOpenedDate'] ?? '').toString();
+      String dinnerOpenedDate = (sw['dinnerOpenedDate'] ?? '').toString();
+      
+      final now = realTime;
+      final todayStr = "${now.year}-${now.month}-${now.day}";
+      
+      bool isPastLunch = (lunchOpenedDate.isNotEmpty && lunchOpenedDate != todayStr) ||
+          (now.hour > lunchHour) ||
+          (now.hour == lunchHour && now.minute >= lunchMinute);
+          
+      bool isPastDinner = (dinnerOpenedDate.isNotEmpty && dinnerOpenedDate != todayStr) ||
+          (now.hour > dinnerHour) ||
+          (now.hour == dinnerHour && now.minute >= dinnerMinute);
+      
+      bool didClose = false;
+      
+      // Auto close Lunch if expired
+      if (entryL && isPastLunch) {
+        await dbRef.child('switches').child('globalEntryL').set(false);
+        if (hostel == globalHostelMode) {
+          globalEntryL = false;
+        }
+        await markAbsentForMealInHostel(hostel, 'l');
+        didClose = true;
+      } else if (!entryL && isPastLunch && lunchOpenedDate == todayStr) {
+        await markAbsentForMealInHostel(hostel, 'l');
+      }
+      
+      // Auto close Dinner if expired
+      if (entryD && isPastDinner) {
+        await dbRef.child('switches').child('globalEntryD').set(false);
+        if (hostel == globalHostelMode) {
+          globalEntryD = false;
+        }
+        await markAbsentForMealInHostel(hostel, 'd');
+        didClose = true;
+      } else if (!entryD && isPastDinner && dinnerOpenedDate == todayStr) {
+        await markAbsentForMealInHostel(hostel, 'd');
+      }
+      
+      return didClose;
+    } catch (e) {
+      print("checkAndExecuteAutoCloseForHostel ($hostel) error: $e");
+      return false;
+    }
+  }
+
   static Future<void> autoCloseIfExpired(String meal) async {
     try {
-      if (meal == 'l' && (globalEntryL || isPastLunchCloseTime())) {
+      if (meal == 'l' && (globalEntryL && isPastLunchCloseTime())) {
         globalEntryL = false;
         await _dbRef.child('switches').child('globalEntryL').set(false);
         globalSyncTrigger.value++;
-      } else if (meal == 'd' && (globalEntryD || isPastDinnerCloseTime())) {
+      } else if (meal == 'd' && (globalEntryD && isPastDinnerCloseTime())) {
         globalEntryD = false;
         await _dbRef.child('switches').child('globalEntryD').set(false);
         globalSyncTrigger.value++;
@@ -6029,8 +6169,8 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
     _initDirectStudentListener();
     _startEvictionHeartbeat();
 
-    // Auto-close check every 10 seconds to ensure instant close at scheduled time
-    _autoCloseStudentTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+    // Auto-close check every 1 second to ensure instant close at scheduled time
+    _autoCloseStudentTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       bool changed = false;
       if (globalEntryL && isPastLunchCloseTime()) {
@@ -6041,6 +6181,25 @@ class _StudentDashboardScreenState extends State<StudentDashboardScreen> {
         SyncService.autoCloseIfExpired('d');
         changed = true;
       }
+      
+      final now = realTime;
+      final rawKey = "${now.year}-${now.month}-${now.day}_${widget.roomNo}_${widget.name}";
+      final key = attendanceSafeKey(rawKey);
+      final todayRec = globalAttendanceMap[key] ?? globalAttendanceMap[rawKey];
+      
+      if (isPastLunchCloseTime() && (todayRec == null || todayRec.l.isEmpty || todayRec.l == '-')) {
+        globalAttendanceMap.putIfAbsent(key, () => DailyRecord());
+        globalAttendanceMap[key]!.l = 'A';
+        SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+        changed = true;
+      }
+      if (isPastDinnerCloseTime() && (todayRec == null || todayRec.d.isEmpty || todayRec.d == '-')) {
+        globalAttendanceMap.putIfAbsent(key, () => DailyRecord());
+        globalAttendanceMap[key]!.d = 'A';
+        SyncService.pushAttendance(key, globalAttendanceMap[key]!);
+        changed = true;
+      }
+      
       if (changed && mounted) {
         setState(() {});
       }
@@ -7656,7 +7815,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _initRolesListener();
     _startAdminEvictionHeartbeat();
     _autoCloseCheckTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 5),
       (_) => _checkAutoClose(),
     );
 
@@ -7670,6 +7829,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       AppUpdateService.checkForUpdate(context);
       await SyncService.fetchNow();
+      _checkAutoClose();
       _verifyAdminStillExists();
       DateTime now = realTime;
       // Fetch current month first so dashboard data displays instantly
@@ -8933,7 +9093,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
       if (l == 'P') {
         lunchPresent++;
-      } else if (l == 'A') {
+      } else if (l == 'A' || (!globalEntryL && isPastLunchCloseTime())) {
         lunchAbsent++;
       } else {
         lunchPending++;
@@ -8941,7 +9101,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
       if (d == 'P') {
         dinnerPresent++;
-      } else if (d == 'A') {
+      } else if (d == 'A' || (!globalEntryD && isPastDinnerCloseTime())) {
         dinnerAbsent++;
       } else {
         dinnerPending++;
@@ -10152,33 +10312,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   void _checkAutoClose() async {
     if (!mounted) return;
-    if (globalEntryL && isPastLunchCloseTime()) {
-      globalEntryL = false;
-      await _closeMessAndMarkAbsent('l');
-      await SyncService.pushSwitchesNow();
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Lunch mess entry auto-closed based on scheduled time."),
-            backgroundColor: brandDark,
-          ),
-        );
-      }
+    final scope = getAdminHostelScope(widget.phone);
+    List<String> targetHostels = (scope == 'boys')
+        ? ['boys']
+        : (scope == 'girls' ? ['girls'] : ['boys', 'girls']);
+
+    bool anyClosed = false;
+    for (String hostel in targetHostels) {
+      bool closed = await SyncService.checkAndExecuteAutoCloseForHostel(hostel);
+      if (closed) anyClosed = true;
     }
-    if (globalEntryD && isPastDinnerCloseTime()) {
-      globalEntryD = false;
-      await _closeMessAndMarkAbsent('d');
-      await SyncService.pushSwitchesNow();
-      if (mounted) {
-        setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Dinner mess entry auto-closed based on scheduled time."),
-            backgroundColor: brandDark,
-          ),
-        );
-      }
+
+    if (anyClosed && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Mess entry auto-closed based on scheduled time."),
+          backgroundColor: brandDark,
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -10217,46 +10370,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   Future<void> _closeMessAndMarkAbsent(String meal) async {
     try {
-      DateTime now = realTime;
-      Map<String, dynamic> batchUpdates = {};
-      
-      if (globalRegisteredStudents.isEmpty) {
-        await SyncService.fetchNow();
-      }
-      
-      // Prevent ConcurrentModificationError by creating a copy of the list
-      List<RegisteredStudent> studentsCopy = List.from(globalRegisteredStudents);
-      
-      for (var s in studentsCopy) {
-        String rawKey = "${now.year}-${now.month}-${now.day}_${s.roomNo}_${s.name}";
-        String safeKey = attendanceSafeKey(rawKey);
-        
-        if (globalAttendanceMap[safeKey] == null) {
-          globalAttendanceMap[safeKey] = DailyRecord();
-        }
-        
-        bool modified = false;
-        if (meal == 'l' &&
-            (globalAttendanceMap[safeKey]!.l == '' ||
-                globalAttendanceMap[safeKey]!.l == '-')) {
-          globalAttendanceMap[safeKey]!.l = 'A';
-          modified = true;
-        } else if (meal == 'd' &&
-            (globalAttendanceMap[safeKey]!.d == '' ||
-                globalAttendanceMap[safeKey]!.d == '-')) {
-          globalAttendanceMap[safeKey]!.d = 'A';
-          modified = true;
-        }
-        
-        if (modified) {
-          batchUpdates["$safeKey/$meal"] = 'A';
-        }
-      }
-      
-      if (batchUpdates.isNotEmpty) {
-        await SyncService.pushAttendanceBatch(batchUpdates);
-        globalSyncTrigger.value++;
-      }
+      await SyncService.markAbsentForMealInHostel(globalHostelMode, meal);
       if (mounted) {
         setState(() {});
       }

@@ -37,16 +37,16 @@ const RESOURCES = {"assets/AssetManifest.bin": "df66b4017aa0ea4a14c769dcc9244964
 "favicon.png": "a1f7283ab1d26518642faffe8efad238",
 "firebase-messaging-sw.js": "6781cacca7d1c744a75bf1f2bf3c0393",
 "flutter.js": "24bc71911b75b5f8135c949e27a2984e",
-"flutter_bootstrap.js": "e92f1987ed206c7c70c90a4762f103fa",
+"flutter_bootstrap.js": "6c5000d11b1068fadf45b1b28f2cbb6f",
 "icons/Icon-192.png": "a60e5f8f5c16f1099ce9b5fe2a94fb1f",
 "icons/Icon-512.png": "1f9b9644d9fe0e46dfce980dcba26a40",
 "icons/Icon-maskable-192.png": "a60e5f8f5c16f1099ce9b5fe2a94fb1f",
 "icons/Icon-maskable-512.png": "1f9b9644d9fe0e46dfce980dcba26a40",
 "index.html": "c9af0b8e344bb7d6cf5d6d0439fa6588",
 "/": "c9af0b8e344bb7d6cf5d6d0439fa6588",
-"main.dart.js": "8986322b6ee75f5b36fdf94971144f79",
+"main.dart.js": "25ce99041e04c2138876264728225c0a",
 "manifest.json": "4f3320d60860f329ac338a1f3effa1c3",
-"version.json": "3836f30cff35c8c9c5a6febeb0fbf595"};
+"version.json": "ce44ee7deb80a0f7b226714f04d8baa8"};
 // The application shell files that are downloaded before a service worker can
 // start.
 const CORE = ["main.dart.js",
